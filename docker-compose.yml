@@ -1,0 +1,43 @@
+version: '3.8'
+
+# Simplified docker-compose for local development
+# For full deployment, use infra/docker-compose.yml
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: gemstone
+      POSTGRES_PASSWORD: gemstone
+      POSTGRES_DB: gemstone
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  worker:
+    build: .
+    command: celery -A orchestrator.celery_app worker --queues default,discovery,fetch,parse,validate,images --concurrency 4 --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  redis_data:
+  postgres_data:

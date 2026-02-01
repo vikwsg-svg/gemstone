@@ -1,0 +1,195 @@
+version: '3.8'
+
+services:
+  # Redis - Message broker and result backend
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL - Metadata storage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: gemstone
+      POSTGRES_PASSWORD: gemstone
+      POSTGRES_DB: gemstone
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gemstone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO - S3-compatible storage (optional)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Celery Worker - Discovery queue
+  worker-discovery:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app worker --queues discovery --concurrency 2 --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Celery Worker - Fetch queue
+  worker-fetch:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app worker --queues fetch --concurrency 4 --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Celery Worker - Parse queue
+  worker-parse:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app worker --queues parse,validate --concurrency 4 --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Celery Worker - Images queue
+  worker-images:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app worker --queues images --concurrency 2 --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Celery Beat - Scheduler (optional)
+  beat:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app beat --loglevel INFO
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Controller - For job submission
+  controller:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: tail -f /dev/null
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=postgresql://gemstone:gemstone@postgres:5432/gemstone
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_ROOT=/app/data
+    volumes:
+      - ../data:/app/data
+      - ..:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Flower - Celery monitoring (optional)
+  flower:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: celery -A orchestrator.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  postgres_data:
+  minio_data:
