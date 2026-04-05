@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    func,
     Index,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -402,12 +403,26 @@ class Database:
                 ).count()
                 tier_counts[tier] = count
 
+            # Items by source site
+            source_counts = {}
+            source_rows = (
+                session.query(
+                    GemstoneItemModel.source_site,
+                    func.count(GemstoneItemModel.id),
+                )
+                .group_by(GemstoneItemModel.source_site)
+                .all()
+            )
+            for source_site, count in source_rows:
+                source_counts[source_site] = count
+
             return {
                 "total_urls": total_urls,
                 "pending_urls": pending_urls,
                 "total_items": total_items,
                 "kept_items": kept_items,
                 "items_by_tier": tier_counts,
+                "items_by_source": source_counts,
             }
         finally:
             session.close()

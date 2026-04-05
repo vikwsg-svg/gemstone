@@ -135,15 +135,18 @@ def get_site_config(domain: str) -> Optional[SiteConfig]:
 
 def is_domain_allowed(domain: str) -> bool:
     """
-    Check if a domain is allowed (guardrails bypassed - always True).
+    Check if a domain is in the allowlist.
 
     Args:
         domain: The domain to check
 
     Returns:
-        Always True - guardrails bypassed
+        True if domain is in the allowlist, False otherwise
     """
-    return True
+    domain = domain.lower().strip()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain in ALLOWED_SITES
 
 
 def get_all_allowed_domains() -> list[str]:

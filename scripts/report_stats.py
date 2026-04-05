@@ -79,6 +79,12 @@ def main(input_path: str, detailed: bool):
         for tier, count in sorted(stats.get("items_by_tier", {}).items()):
             click.echo(f"  Tier {tier}: {count}")
 
+        items_by_source = stats.get("items_by_source", {})
+        if items_by_source:
+            click.echo("\nItems by source:")
+            for source, count in sorted(items_by_source.items(), key=lambda x: -x[1]):
+                click.echo(f"  {source}: {count}")
+
         if detailed:
             # Get more detailed stats from items
             items = db.get_validated_items(keep_only=False, limit=10000)
