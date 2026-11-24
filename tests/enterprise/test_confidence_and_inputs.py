@@ -61,6 +61,16 @@ def test_each_reason_code(kwargs, code):
     assert result["score"] < 1.0
 
 
+def test_missing_treatment_weighs_more_where_treatment_drives_price():
+    args = dict(used=_used(12), qualified_count=12, band_per_carat=BAND, today=TODAY)
+    sapphire = assess(query=_q(treatment=None, species="corundum"), **args)
+    tanzanite = assess(query=_q(variety="tanzanite", species="zoisite", treatment=None), **args)
+    emerald = assess(query=_q(variety="emerald", species="beryl", treatment=None), **args)
+    assert sapphire["score"] == emerald["score"] == 0.7
+    assert sapphire["level"] == "medium"
+    assert tanzanite["score"] == 0.85
+
+
 def test_missing_origin_only_for_origin_sensitive_varieties():
     result = assess(query=_q(variety="tanzanite", origin=None), used=_used(12),
                     qualified_count=12, band_per_carat=BAND, today=TODAY)

@@ -36,6 +36,19 @@ PENALTIES = {
 
 REASON_CODES = ("insufficient_comps", *PENALTIES)
 
+# Where treatment is a primary price driver (unheated corundum or no-oil emerald
+# can be worth multiples of the treated equivalent), not knowing it costs more.
+TREATMENT_SENSITIVE_SPECIES = {"corundum"}
+TREATMENT_SENSITIVE_VARIETIES = {"emerald"}
+MISSING_TREATMENT_SENSITIVE_PENALTY = 0.30
+
+
+def _treatment_sensitive(query: StoneQuery) -> bool:
+    return (
+        query.species in TREATMENT_SENSITIVE_SPECIES
+        or query.variety in TREATMENT_SENSITIVE_VARIETIES
+    )
+
 
 @dataclass(frozen=True)
 class UsedComp:
@@ -142,7 +155,10 @@ def assess(
     if band_per_carat is None:
         return {"score": 0.0, "level": "none", "reasons": reasons}
 
-    score = 1.0 - sum(PENALTIES.get(r["code"], 0.0) for r in reasons)
+    penalties = dict(PENALTIES)
+    if _treatment_sensitive(query):
+        penalties["missing_treatment"] = MISSING_TREATMENT_SENSITIVE_PENALTY
+    score = 1.0 - sum(penalties.get(r["code"], 0.0) for r in reasons)
     score = round(max(0.05, min(1.0, score)), 2)
     level = "high" if score >= 0.75 else "medium" if score >= 0.5 else "low"
     return {"score": score, "level": level, "reasons": reasons}
