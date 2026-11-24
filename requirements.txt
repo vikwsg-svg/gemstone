@@ -6,6 +6,11 @@ lxml>=5.1.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
+# Enterprise API (enterprise/)
+fastapi>=0.115.0
+uvicorn>=0.30.0
+python-multipart>=0.0.9
+
 # Distributed queue
 celery[redis]>=5.3.0
 redis>=5.0.0
