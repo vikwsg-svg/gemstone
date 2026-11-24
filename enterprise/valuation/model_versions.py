@@ -88,14 +88,14 @@ class ModelVersion:
 
 DEFAULT_VERSIONS: tuple[ModelVersion, ...] = (
     ModelVersion(
-        id="comps-2026.11.0",
+        id="scan-2026.11.0",
         engine_version="v2.4",
         released=date(2026, 11, 24),
         status="current",
         notes="Enterprise v1 launch rules on engine v2.4.",
     ),
     ModelVersion(
-        id="comps-2026.09.0",
+        id="scan-2026.09.0",
         engine_version="v2.3",
         released=date(2026, 9, 1),
         status="supported",

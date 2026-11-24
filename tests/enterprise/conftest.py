@@ -5,7 +5,7 @@ from enterprise.app import create_app
 from enterprise.auth import create_tenant, issue_api_key
 from enterprise.db import Database
 from enterprise.settings import EnterpriseSettings
-from tests.enterprise.helpers import Clock, FakeEngine, TenantKey
+from tests.enterprise.helpers import Clock, FakeEngine, FakeIdentifier, TenantKey
 
 
 @pytest.fixture
@@ -31,8 +31,14 @@ def live_engine() -> FakeEngine:
 
 
 @pytest.fixture
-def app(db, settings, live_engine, clock):
-    return create_app(settings, db=db, live_engine=live_engine, clock=clock)
+def identifier() -> FakeIdentifier:
+    return FakeIdentifier()
+
+
+@pytest.fixture
+def app(db, settings, live_engine, identifier, clock):
+    return create_app(settings, db=db, live_engine=live_engine, live_identifier=identifier,
+                      clock=clock, sleep=lambda seconds: None)
 
 
 @pytest.fixture
@@ -43,7 +49,7 @@ def client(app):
 
 @pytest.fixture
 def make_tenant(db):
-    def _make(name="Acme Insurance", environment="live", scopes=("comps",), pin=None) -> TenantKey:
+    def _make(name="Acme Insurance", environment="live", scopes=("scan",), pin=None) -> TenantKey:
         with db.session_scope() as s:
             tenant = create_tenant(s, name, environment, pin)
             record, raw = issue_api_key(s, tenant, list(scopes))

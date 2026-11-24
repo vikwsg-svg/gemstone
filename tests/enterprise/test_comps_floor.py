@@ -4,13 +4,13 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from enterprise.models import Valuation
-from enterprise.schemas import ScenarioResult, ValuationResponse
+from enterprise.models import Scan
+from enterprise.schemas import ScenarioResult, ScanResponse
 from tests.enterprise.helpers import BASE, make_comp, stone
 
 
 def _post(client, tenant, **overrides):
-    return client.post(f"{BASE}/valuations", headers=tenant.headers, json=stone(**overrides))
+    return client.post(f"{BASE}/scans", headers=tenant.headers, json=stone(**overrides))
 
 
 def test_four_qualifying_comps_returns_no_price(client, tenant, live_engine, db):
@@ -32,7 +32,7 @@ def test_four_qualifying_comps_returns_no_price(client, tenant, live_engine, db)
 
     # Persisted like any other valuation.
     with db.session_scope() as s:
-        row = s.scalars(select(Valuation)).one()
+        row = s.scalars(select(Scan)).one()
         assert row.status == "insufficient_data"
         assert row.result["price"] is None
 
@@ -114,4 +114,4 @@ def test_valuation_response_floor_validator(client, tenant, live_engine):
     body = _post(client, tenant).json()
     body["comps_summary"]["used"] = 4
     with pytest.raises(ValidationError):
-        ValuationResponse.model_validate(body)
+        ScanResponse.model_validate(body)

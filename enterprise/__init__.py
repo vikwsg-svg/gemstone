@@ -7,7 +7,7 @@ from the consumer and dealer surfaces: it has its own FastAPI app, its own
 OpenAPI document, its own auth (per-tenant API keys with product scopes) and
 its own tables (all prefixed ``ent_``).
 
-Products: Comps (valuation API, v1 built here), Intake, Estimate, Verify and
+Products: Scan API (identify + price, v1 built here), Intake, Estimate, Verify and
 Index (planned; their scopes are reserved in ``enterprise.auth.PRODUCTS``).
 """
 

@@ -27,17 +27,17 @@ from enterprise.errors import ApiError
 from enterprise.idempotency import run_idempotent
 from enterprise.ids import new_id
 from enterprise.metering import usage_for
-from enterprise.models import BatchJob, Valuation
+from enterprise.models import BatchJob, Scan
+from enterprise.scan import ScanService
 from enterprise.schemas import (
     BatchJobResponse,
     ErrorResponse,
     ModelsResponse,
+    ScanRequest,
+    ScanResponse,
     UsageResponse,
     ValuationBasis,
-    ValuationRequest,
-    ValuationResponse,
 )
-from enterprise.valuation.service import ValuationService
 
 router = APIRouter()
 
@@ -47,11 +47,11 @@ _ERRORS = {
     422: {"model": ErrorResponse, "description": "Validation error."},
 }
 _ENGINE_ERRORS = {
-    503: {"model": ErrorResponse, "description": "Pricing engine unavailable."},
+    503: {"model": ErrorResponse, "description": "Identification or pricing engine unavailable."},
 }
 _IDEMPOTENCY_HEADER_DOC = (
     "Optional. Retrying a POST with the same key and body returns the original response "
-    "(with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. "
+    "(with `Idempotent-Replayed: true`) instead of creating and billing a second scan. "
     "Keys are scoped to your account and kept for 24 hours."
 )
 
@@ -60,43 +60,56 @@ def _replay_headers(replayed: bool) -> dict:
     return {"Idempotent-Replayed": "true"} if replayed else {}
 
 
-# ── Valuations ───────────────────────────────────────────────────────────────
+# ── Scans ────────────────────────────────────────────────────────────────────
 
 
 @router.post(
-    "/valuations",
+    "/scans",
     status_code=201,
-    response_model=ValuationResponse,
-    responses={**_ERRORS, **_ENGINE_ERRORS},
-    tags=["Comps"],
-    summary="Value a piece of jewelry or a loose stone",
+    response_model=ScanResponse,
+    responses={
+        202: {"model": ScanResponse, "description": "Accepted; identification still running."},
+        **_ERRORS,
+        **_ENGINE_ERRORS,
+    },
+    tags=["Scan API"],
+    summary="Scan a piece of jewelry or a loose stone",
     description=(
-        "Values a finished piece (ring, earrings, necklace, pendant, bracelet, brooch) or a loose "
-        "diamond or gemstone. Returns a low/mid/high price band in the requested valuation basis "
-        "(also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the "
-        "comparables used, a confidence score with reason codes, and scenario pricing for unknown "
-        "natural-vs-lab-grown, treatment or origin. **If fewer than 5 comparables qualify, no "
-        "price is returned**: `status` is `insufficient_data` and the closest comps are listed. "
-        "Every valuation is stored and retrievable by `valuation_id`."
+        "The business version of a GemstoneAI scan result. Send 1-5 photos of one item, the "
+        "item's details, or both (stated details always win over what the photos suggest). "
+        "Returns the identification (summary, observations, alternatives, open questions and "
+        "the next evidence that would settle them), then the price: a low/mid/high range in the "
+        "requested valuation basis (also per carat for loose stones), a Raw/Make/Market breakdown "
+        "for pieces, the comparables used (each tagged realized sale or asking price), a "
+        "confidence score with reason codes, and scenario pricing for unknowns. "
+        "**No guessing:** an item that cannot be identified well enough returns `unidentified`, "
+        "and fewer than 5 qualifying comparables returns `insufficient_data`, both with no price. "
+        "If identification is still running the response is `202` with `status: processing`; "
+        "retrieve the scan with `GET /scans/{scan_id}`. Every scan is stored and retrievable."
     ),
 )
-def create_valuation(
-    payload: ValuationRequest,
+def create_scan(
+    payload: ScanRequest,
     idempotency_key: Optional[str] = Header(
         default=None, alias="Idempotency-Key", description=_IDEMPOTENCY_HEADER_DOC
     ),
-    principal: Principal = Depends(require_scope("comps")),
+    principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    service = ValuationService(state, db)
+    service = ScanService(state, db)
+
+    def handler() -> tuple[int, dict]:
+        body = service.create(principal, payload)
+        return (202 if body["status"] == "processing" else 201), body
+
     result = run_idempotent(
         db,
         tenant_id=principal.tenant.id,
-        endpoint="POST /valuations",
+        endpoint="POST /scans",
         key=idempotency_key,
         payload=payload.model_dump(mode="json"),
-        handler=lambda: (201, service.create(principal, payload)),
+        handler=handler,
         now=state.clock(),
         ttl=timedelta(hours=state.settings.idempotency_ttl_hours),
     )
@@ -108,25 +121,28 @@ def create_valuation(
 
 
 @router.get(
-    "/valuations/{valuation_id}",
-    response_model=ValuationResponse,
+    "/scans/{scan_id}",
+    response_model=ScanResponse,
     responses={**_ERRORS, 404: {"model": ErrorResponse, "description": "Not found."}},
-    tags=["Comps"],
-    summary="Retrieve a stored valuation (audit trail)",
+    tags=["Scan API"],
+    summary="Retrieve a scan (audit trail, or the result of a processing scan)",
 )
-def get_valuation(
-    valuation_id: str = Path(max_length=40),
-    principal: Principal = Depends(require_scope("comps")),
+def get_scan(
+    scan_id: str = Path(max_length=40),
+    principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
+    state: AppState = Depends(get_state),
 ) -> JSONResponse:
     row = db.scalars(
-        select(Valuation).where(
-            Valuation.id == valuation_id, Valuation.tenant_id == principal.tenant.id
-        )
+        select(Scan).where(Scan.id == scan_id, Scan.tenant_id == principal.tenant.id)
     ).first()
     if row is None:
         # 404 (not 403) for other tenants' ids, so existence is not revealed.
-        raise ApiError(404, "valuation_not_found", "No valuation with this id exists.")
+        raise ApiError(404, "scan_not_found", "No scan with this id exists.")
+    if row.status == "processing":
+        body = ScanService(state, db).refresh(row)
+        db.commit()
+        return JSONResponse(content=body)
     return JSONResponse(content=row.result)
 
 
@@ -148,7 +164,7 @@ def _job_body(job: BatchJob, root_path: str) -> dict:
         insufficient_rows=job.insufficient_rows,
         failed_rows=job.failed_rows,
         results_url=(
-            f"{root_path}/valuations/batch/{job.id}/results" if job.status == "completed" else None
+            f"{root_path}/scans/batch/{job.id}/results" if job.status == "completed" else None
         ),
         error=job.error,
     )
@@ -165,7 +181,7 @@ def _get_job(db: Session, principal: Principal, job_id: str) -> BatchJob:
 
 
 @router.post(
-    "/valuations/batch",
+    "/scans/batch",
     status_code=202,
     response_model=BatchJobResponse,
     responses={
@@ -173,16 +189,17 @@ def _get_job(db: Session, principal: Principal, job_id: str) -> BatchJob:
         **_ENGINE_ERRORS,
         413: {"model": ErrorResponse, "description": "File too large."},
     },
-    tags=["Comps"],
-    summary="Submit a CSV of pieces and stones for batch valuation",
+    tags=["Scan API"],
+    summary="Submit a CSV of items to scan in batch",
     description=(
-        "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `item_type` "
-        "(default `loose_stone`), `valuation_basis`; center or loose stone: `variety`, `species`, "
+        "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, "
+        "`photo_urls` (up to 5 public https links separated by `|`), `item_type` "
+        "(default `loose_stone` when a row has no photos), `valuation_basis`; center or loose stone: `variety`, `species`, "
         "`carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, "
         "`growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: "
         "`side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, "
         "`metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, "
-        "`condition`. The header must include `variety`, `item_type` or `metal_type`. "
+        "`condition`. The header must include `photo_urls`, `variety`, `item_type` or `metal_type`. "
         "The job runs asynchronously; poll the status endpoint, then download the results CSV. "
         "The whole batch is pinned to one model version."
     ),
@@ -198,7 +215,7 @@ def create_batch(
     idempotency_key: Optional[str] = Header(
         default=None, alias="Idempotency-Key", description=_IDEMPOTENCY_HEADER_DOC
     ),
-    principal: Principal = Depends(require_scope("comps")),
+    principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
@@ -216,9 +233,11 @@ def create_batch(
     if not rows:
         raise ApiError(422, "invalid_csv", "The CSV has a header but no rows.")
 
-    service = ValuationService(state, db)
-    resolved, _ = service.resolve_model(principal.tenant, model_version)
-    service.engine_for(principal.tenant)  # fail fast if the live engine is not configured
+    service = ScanService(state, db)
+    resolved, _ = service.pricing.resolve_model(principal.tenant, model_version)
+    service.pricing.engine_for(principal.tenant)  # fail fast if the live engine is not configured
+    if any(r.request is not None and r.request.photos for r in rows):
+        service.identifier_for(principal.tenant)  # fail fast if photo identification is missing
 
     def handler() -> tuple[int, dict]:
         job = BatchJob(
@@ -239,7 +258,7 @@ def create_batch(
     result = run_idempotent(
         db,
         tenant_id=principal.tenant.id,
-        endpoint="POST /valuations/batch",
+        endpoint="POST /scans/batch",
         key=idempotency_key,
         payload={
             "csv_sha256": hashlib.sha256(raw).hexdigest(),
@@ -263,16 +282,16 @@ def create_batch(
 
 
 @router.get(
-    "/valuations/batch/{job_id}",
+    "/scans/batch/{job_id}",
     response_model=BatchJobResponse,
     responses={**_ERRORS, 404: {"model": ErrorResponse, "description": "Not found."}},
-    tags=["Comps"],
+    tags=["Scan API"],
     summary="Batch job status",
 )
 def get_batch(
     request: Request,
     job_id: str = Path(max_length=40),
-    principal: Principal = Depends(require_scope("comps")),
+    principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     job = _get_job(db, principal, job_id)
@@ -280,7 +299,7 @@ def get_batch(
 
 
 @router.get(
-    "/valuations/batch/{job_id}/results",
+    "/scans/batch/{job_id}/results",
     response_class=Response,
     responses={
         200: {"content": {"text/csv": {}}, "description": "Results CSV, one row per input row."},
@@ -288,12 +307,12 @@ def get_batch(
         404: {"model": ErrorResponse, "description": "Not found."},
         409: {"model": ErrorResponse, "description": "Job not completed yet."},
     },
-    tags=["Comps"],
+    tags=["Scan API"],
     summary="Download batch results as CSV",
 )
 def get_batch_results(
     job_id: str = Path(max_length=40),
-    principal: Principal = Depends(require_scope("comps")),
+    principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
 ) -> Response:
     job = _get_job(db, principal, job_id)
@@ -315,11 +334,11 @@ def get_batch_results(
     "/models",
     response_model=ModelsResponse,
     responses=_ERRORS,
-    tags=["Comps"],
+    tags=["Scan API"],
     summary="List model versions available for pinning",
 )
 def list_models(
-    principal: Principal = Depends(require_scope("comps")),
+    principal: Principal = Depends(require_scope("scan")),
     state: AppState = Depends(get_state),
 ) -> ModelsResponse:
     return ModelsResponse(
@@ -344,7 +363,7 @@ def list_models(
     response_model=UsageResponse,
     responses=_ERRORS,
     tags=["Account"],
-    summary="Daily valuation counts for your account",
+    summary="Daily scan counts for your account",
 )
 def get_usage(
     start_date: Optional[date] = Query(default=None, description="Inclusive. Default: 29 days before end_date."),
@@ -368,8 +387,8 @@ def get_usage(
             {
                 "date": r.day,
                 "product": r.product,
-                "valuations_total": r.valuations_total,
-                "valuations_priced": r.valuations_priced,
+                "scans_total": r.scans_total,
+                "scans_priced": r.scans_priced,
             }
             for r in rows
         ],

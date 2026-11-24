@@ -1,4 +1,4 @@
-"""Usage metering: count of valuations per tenant, product and UTC day."""
+"""Usage metering: count of scans per tenant, product and UTC day."""
 
 from datetime import date
 
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from enterprise.models import UsageDaily
 
 
-def record_valuation(
+def record_scan(
     session: Session, *, tenant_id: str, product: str, day: date, priced: bool
 ) -> None:
     """Increment the tenant's counter for ``day`` in the caller's transaction (atomic upsert)."""
@@ -23,14 +23,14 @@ def record_valuation(
             tenant_id=tenant_id,
             product=product,
             day=day,
-            valuations_total=1,
-            valuations_priced=priced_inc,
+            scans_total=1,
+            scans_priced=priced_inc,
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=[UsageDaily.tenant_id, UsageDaily.product, UsageDaily.day],
             set_={
-                "valuations_total": UsageDaily.valuations_total + 1,
-                "valuations_priced": UsageDaily.valuations_priced + priced_inc,
+                "scans_total": UsageDaily.scans_total + 1,
+                "scans_priced": UsageDaily.scans_priced + priced_inc,
             },
         )
         session.execute(stmt)
@@ -44,13 +44,13 @@ def record_valuation(
                 tenant_id=tenant_id,
                 product=product,
                 day=day,
-                valuations_total=1,
-                valuations_priced=priced_inc,
+                scans_total=1,
+                scans_priced=priced_inc,
             )
         )
     else:
-        row.valuations_total += 1
-        row.valuations_priced += priced_inc
+        row.scans_total += 1
+        row.scans_priced += priced_inc
 
 
 def usage_for(session: Session, tenant_id: str, start: date, end: date) -> list[UsageDaily]:

@@ -1,5 +1,14 @@
 """
-The contract between the enterprise layer and a comps engine.
+The contracts between the enterprise layer and the GemstoneAI engines.
+
+Two engines sit behind the Scan API:
+
+- an **identify engine** (the scan's first step) turns 1-5 photos, plus any
+  details the customer already knows, into a preliminary identification with
+  alternatives, open questions and the next evidence that would settle it;
+- a **comps engine** prices the identified item.
+
+The comps engine contract:
 
 An engine receives a normalized description of one item (a loose stone or a
 finished piece of jewelry) and returns candidate comparables, each scored for
@@ -28,6 +37,61 @@ BREAKDOWN_PARTS = ("raw", "make", "market")
 
 class EngineUnavailable(Exception):
     """The engine could not be reached or returned an unusable response."""
+
+
+class IdentificationUnavailable(Exception):
+    """The identify engine could not be reached or returned an unusable response."""
+
+
+@dataclass(frozen=True)
+class PhotoRef:
+    """One photo of the item: inline bytes or a public https URL."""
+
+    sha256: str
+    media_type: Optional[str] = None
+    bytes: Optional[int] = None
+    url: Optional[str] = None
+    data: Optional[bytes] = field(default=None, repr=False, compare=False)
+
+    def public(self) -> dict[str, Any]:
+        """What is stored and echoed back (never the image bytes)."""
+        return {"sha256": self.sha256, "media_type": self.media_type,
+                "bytes": self.bytes, "url": self.url}
+
+
+@dataclass(frozen=True)
+class Identification:
+    """A preliminary identification, never a certainty."""
+
+    status: str  # "identified" | "unidentified"
+    item: Optional[Mapping[str, Any]] = None  # request-shaped item fields
+    confidence: Optional[float] = None  # 0..1
+    summary: Optional[str] = None
+    observations: tuple[str, ...] = ()
+    alternatives: tuple[Mapping[str, Any], ...] = ()  # {"label", "probability"}
+    open_questions: tuple[str, ...] = ()
+    next_evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PendingIdentification:
+    """The identify engine accepted the photos and is still working."""
+
+    ref: str  # the engine's analysis id, polled later
+
+
+class IdentifyEngine(ABC):
+    name: str = "identify"
+    synthetic: bool = False
+
+    @abstractmethod
+    def identify(self, photos: list[PhotoRef], hints: Mapping[str, Any]
+                 ) -> "Identification | PendingIdentification":
+        """Identify the item in ``photos``; ``hints`` are details the customer stated."""
+
+    def poll(self, ref: str) -> "Identification | PendingIdentification":
+        """Return the result of a pending identification (or still pending)."""
+        raise IdentificationUnavailable("this identify engine does not support polling")
 
 
 @dataclass(frozen=True)
@@ -110,6 +174,10 @@ class EngineComp:
     # multipliers). Loose stones use the per-carat form, pieces the total form.
     adjusted_price_per_carat: Optional[float] = None
     adjusted_price_total: Optional[float] = None
+    # Evidence the customer can follow, as in the consumer scan's comparables.
+    url: Optional[str] = None
+    photo_url: Optional[str] = None
+    differences: tuple[str, ...] = ()  # how the comp differs from the subject
 
     @property
     def price_per_carat(self) -> Optional[float]:

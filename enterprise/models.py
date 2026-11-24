@@ -60,22 +60,26 @@ class ApiKey(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
-class Valuation(Base):
-    """One persisted valuation: full inputs, comps, model version and output (audit trail)."""
+class Scan(Base):
+    """One persisted scan: inputs, identification, comps, model version and output (audit trail)."""
 
-    __tablename__ = "ent_valuations"
+    __tablename__ = "ent_scans"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(
         String(40), ForeignKey("ent_tenants.id"), nullable=False
     )
     api_key_id: Mapped[str] = mapped_column(String(40), nullable=False)
-    product: Mapped[str] = mapped_column(String(16), nullable=False, default="comps")
+    product: Mapped[str] = mapped_column(String(16), nullable=False, default="scan")
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     valuation_basis: Mapped[str] = mapped_column(String(32), nullable=False)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)
     model_version_source: Mapped[str] = mapped_column(String(16), nullable=False)
     engine: Mapped[str] = mapped_column(String(32), nullable=False)
+    identifier: Mapped[Optional[str]] = mapped_column(String(32))
+    # The identify engine's analysis id while a scan is processing.
+    identification_ref: Mapped[Optional[str]] = mapped_column(String(64))
+    photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     comps_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # The request exactly as validated, and the full response body as returned.
     request_payload: Mapped[dict[str, Any]] = mapped_column(JSONVariant, nullable=False)
@@ -85,8 +89,9 @@ class Valuation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (Index("ix_ent_valuations_tenant_created", "tenant_id", "created_at"),)
+    __table_args__ = (Index("ix_ent_scans_tenant_created", "tenant_id", "created_at"),)
 
 
 class IdempotencyRecord(Base):
@@ -111,7 +116,7 @@ class IdempotencyRecord(Base):
 
 
 class UsageDaily(Base):
-    """Metering: valuations per tenant, product and UTC day."""
+    """Metering: scans per tenant, product and UTC day."""
 
     __tablename__ = "ent_usage_daily"
 
@@ -120,8 +125,8 @@ class UsageDaily(Base):
     )
     product: Mapped[str] = mapped_column(String(16), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
-    valuations_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    valuations_priced: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scans_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scans_priced: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class BatchJob(Base):

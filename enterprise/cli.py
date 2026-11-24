@@ -2,9 +2,9 @@
 Operator CLI (there is no admin console in v1).
 
     python -m enterprise.cli create-tenant --name "Acme Insurance" --environment sandbox
-    python -m enterprise.cli create-key --tenant ten_... --scopes comps --name "prod server"
+    python -m enterprise.cli create-key --tenant ten_... --scopes scan --name "prod server"
     python -m enterprise.cli revoke-key --key-id key_...
-    python -m enterprise.cli pin-model --tenant ten_... --version comps-2026.09.0
+    python -m enterprise.cli pin-model --tenant ten_... --version scan-2026.09.0
     python -m enterprise.cli export-openapi --output docs/enterprise/openapi.json
 
 Uses ENTERPRISE_DATABASE_URL. Schema changes go through Alembic
@@ -62,7 +62,7 @@ def create_tenant_cmd(name: str, environment: str, pin: str | None) -> None:
 
 @cli.command("create-key")
 @click.option("--tenant", "tenant_id", required=True)
-@click.option("--scopes", default="comps", show_default=True,
+@click.option("--scopes", default="scan", show_default=True,
               help=f"Comma-separated, from: {', '.join(PRODUCTS)}")
 @click.option("--name", default="default", show_default=True)
 def create_key_cmd(tenant_id: str, scopes: str, name: str) -> None:
@@ -119,7 +119,7 @@ def export_openapi_cmd(output: str) -> None:
     from enterprise.settings import EnterpriseSettings
 
     settings = EnterpriseSettings(database_url="sqlite://")
-    app = create_enterprise_app(settings, live_engine=None)
+    app = create_enterprise_app(settings, live_engine=None, live_identifier=None)
     spec = export_openapi(app, settings.public_base_url)
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(spec, indent=2, sort_keys=False) + "\n")

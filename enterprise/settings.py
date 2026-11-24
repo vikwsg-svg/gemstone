@@ -25,6 +25,16 @@ class EnterpriseSettings(BaseSettings):
     engine_api_key: Optional[str] = None
     engine_timeout_seconds: float = 5.0
 
+    # Identify engine (the scan's first step: photos -> what the item is) for live
+    # tenants. Sandbox tenants always use the simulated sandbox identifier.
+    identify_backend: Literal["none", "remote", "sandbox"] = "none"
+    identify_url: Optional[str] = None
+    identify_api_key: Optional[str] = None
+    identify_timeout_seconds: float = 20.0
+    # How long a request waits for a pending identification before answering 202.
+    identify_wait_seconds: float = 8.0
+    identify_poll_interval_seconds: float = 1.0
+
     # Overrides the registry's "current" model version when set.
     default_model_version: Optional[str] = None
 

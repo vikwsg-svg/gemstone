@@ -1,5 +1,6 @@
 """Shared application state and FastAPI dependencies."""
 
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,7 +10,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from enterprise.db import Database
-from enterprise.engine.base import CompsEngine
+from enterprise.engine.base import CompsEngine, IdentifyEngine
 from enterprise.models import utcnow
 from enterprise.settings import EnterpriseSettings
 from enterprise.valuation.model_versions import ModelRegistry
@@ -22,7 +23,10 @@ class AppState:
     registry: ModelRegistry
     sandbox_engine: CompsEngine
     live_engine: Optional[CompsEngine]
+    sandbox_identifier: Optional[IdentifyEngine] = None
+    live_identifier: Optional[IdentifyEngine] = None
     clock: Callable[[], datetime] = field(default=utcnow)
+    sleep: Callable[[float], None] = field(default=time.sleep)
 
 
 def get_state(request: Request) -> AppState:

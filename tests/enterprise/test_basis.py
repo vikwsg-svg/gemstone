@@ -8,7 +8,7 @@ from tests.enterprise.helpers import BASE, make_comp, stone
 
 
 def _value(client, tenant, **overrides):
-    resp = client.post(f"{BASE}/valuations", headers=tenant.headers, json=stone(**overrides))
+    resp = client.post(f"{BASE}/scans", headers=tenant.headers, json=stone(**overrides))
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -77,7 +77,7 @@ def test_missing_or_unknown_basis_is_rejected(client, tenant, basis):
         payload.pop("valuation_basis")
     else:
         payload["valuation_basis"] = basis
-    resp = client.post(f"{BASE}/valuations", headers=tenant.headers, json=payload)
+    resp = client.post(f"{BASE}/scans", headers=tenant.headers, json=payload)
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "invalid_request"
 

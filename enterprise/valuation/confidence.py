@@ -23,7 +23,10 @@ WIDE_BAND_RATIO = 0.6
 LOW_SIMILARITY_BELOW = 0.70
 LAB_REPORT_EXPECTED_FROM_CARAT = 1.0  # for stones set in pieces
 
+UNCERTAIN_IDENTIFICATION_BELOW = 0.75
+
 PENALTIES = {
+    "uncertain_identification": 0.15,
     "few_comps": 0.15,
     "missing_growth": 0.45,  # natural vs lab-grown is often a 10x difference
     "missing_treatment": 0.15,
@@ -40,7 +43,7 @@ PENALTIES = {
     "no_lab_report": 0.05,
 }
 
-REASON_CODES = ("insufficient_comps", *PENALTIES)
+REASON_CODES = ("unidentified", "insufficient_comps", *PENALTIES)
 
 # Where treatment is a primary price driver (unheated corundum or no-oil emerald
 # can be worth multiples of the treated equivalent), not knowing it costs more.
@@ -140,10 +143,21 @@ def assess(
     qualified_count: int,
     band_mid_low_high: Optional[dict],
     today: date,
+    identification_confidence: Optional[float] = None,
 ) -> dict:
-    """``band_mid_low_high`` is the per-carat band (loose stones) or total band (pieces)."""
+    """``band_mid_low_high`` is the per-carat band (loose stones) or total band (pieces).
+
+    ``identification_confidence`` is set when the item was identified from photos.
+    """
     reasons: list[dict] = []
     priced = band_mid_low_high is not None
+
+    if identification_confidence is not None and identification_confidence < UNCERTAIN_IDENTIFICATION_BELOW:
+        reasons.append(_reason(
+            "uncertain_identification",
+            f"The identification from the photos is preliminary ({identification_confidence:.0%} "
+            "confident). See the alternatives and the next evidence that would settle it.",
+        ))
 
     if not priced:
         reasons.append(_reason(

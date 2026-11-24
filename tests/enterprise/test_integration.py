@@ -21,7 +21,7 @@ from sqlalchemy import inspect, select, text
 from enterprise.app import create_app, create_enterprise_app, export_openapi
 from enterprise.cli import cli
 from enterprise.db import Database
-from enterprise.models import Valuation
+from enterprise.models import Scan
 from enterprise.settings import EnterpriseSettings, get_settings
 from tests.enterprise.helpers import BASE, Clock
 
@@ -57,11 +57,11 @@ def test_full_valuation_round_trip(migrated_url):
     db = Database(migrated_url)
     with db.engine.connect() as conn:
         tables = set(inspect(conn).get_table_names())
-    assert {"ent_tenants", "ent_api_keys", "ent_valuations", "ent_usage_daily"} <= tables
+    assert {"ent_tenants", "ent_api_keys", "ent_scans", "ent_usage_daily"} <= tables
 
     tenant = _cli(migrated_url, "create-tenant", "--name", "Pilot Auction House",
                   "--environment", "sandbox")
-    key = _cli(migrated_url, "create-key", "--tenant", tenant["tenant_id"], "--scopes", "comps")
+    key = _cli(migrated_url, "create-key", "--tenant", tenant["tenant_id"], "--scopes", "scan")
     assert key["api_key"].startswith("gsk_test_")
     headers = {"Authorization": f"Bearer {key['api_key']}", "Idempotency-Key": "it-1"}
 
@@ -74,7 +74,7 @@ def test_full_valuation_round_trip(migrated_url):
         "valuation_basis": "retail_replacement",
     }
     with TestClient(app) as client:
-        created = client.post(f"{BASE}/valuations", headers=headers, json=request)
+        created = client.post(f"{BASE}/scans", headers=headers, json=request)
         assert created.status_code == 201, created.text
         body = created.json()
 
@@ -88,32 +88,32 @@ def test_full_valuation_round_trip(migrated_url):
         assert {c["source_type"] for c in body["comps"]} <= {"realized", "asking"}
         assert all(0 <= c["similarity"] <= 1 and c["date"] for c in body["comps"])
         assert {s["scenario_id"] for s in body["scenarios"]} == {"treatment:none", "treatment:heated"}
-        assert body["model_version"] == "comps-2026.11.0"
-        assert body["valuation_id"].startswith("val_")
+        assert body["model_version"] == "scan-2026.11.0"
+        assert body["scan_id"].startswith("scn_")
 
         # Audit retrieval returns exactly what was returned at creation.
-        fetched = client.get(f"{BASE}/valuations/{body['valuation_id']}", headers=headers)
+        fetched = client.get(f"{BASE}/scans/{body['scan_id']}", headers=headers)
         assert fetched.status_code == 200
         assert fetched.json() == body
 
         # Idempotent retry does not create or bill a second valuation.
-        replay = client.post(f"{BASE}/valuations", headers=headers, json=request)
-        assert replay.json()["valuation_id"] == body["valuation_id"]
+        replay = client.post(f"{BASE}/scans", headers=headers, json=request)
+        assert replay.json()["scan_id"] == body["scan_id"]
 
         usage = client.get(f"{BASE}/usage", headers=headers).json()
         assert usage["data"] == [
-            {"date": "2026-11-24", "product": "comps", "valuations_total": 1,
-             "valuations_priced": 1}
+            {"date": "2026-11-24", "product": "scan", "scans_total": 1,
+             "scans_priced": 1}
         ]
 
         spec = client.get(f"{BASE}/openapi.json").json()
-        assert "/valuations" in spec["paths"] and "/valuations/batch" in spec["paths"]
+        assert "/scans" in spec["paths"] and "/scans/batch" in spec["paths"]
 
     # The stored row holds full inputs, comps, model version and output.
     with db.session_scope() as s:
-        row = s.scalars(select(Valuation)).one()
+        row = s.scalars(select(Scan)).one()
         assert row.tenant_id == tenant["tenant_id"]
-        assert row.model_version == "comps-2026.11.0"
+        assert row.model_version == "scan-2026.11.0"
         assert row.request_payload["stones"][0]["variety"] == "blue sapphire"
         assert row.result["comps"] == body["comps"]
         assert row.result["price"] == body["price"]

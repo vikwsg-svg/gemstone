@@ -135,12 +135,12 @@ def test_api_maps_engine_outage_to_503_and_rejects_untagged_comps(db, settings, 
     app = create_app(settings, db=db, live_engine=_remote(handler), clock=clock)
     tenant = make_tenant()
     with TestClient(app) as c:
-        down = c.post(f"{BASE}/valuations", headers=tenant.headers, json=stone())
+        down = c.post(f"{BASE}/scans", headers=tenant.headers, json=stone())
         assert down.status_code == 503
         assert down.json()["error"]["code"] == "engine_unavailable"
 
         mode["fail"] = False
-        body = c.post(f"{BASE}/valuations", headers=tenant.headers, json=stone()).json()
+        body = c.post(f"{BASE}/scans", headers=tenant.headers, json=stone()).json()
         assert body["status"] == "priced"
         assert body["comps_summary"]["rejected"] == 1
         assert body["synthetic_data"] is False
@@ -217,7 +217,7 @@ def test_sandbox_pieces_match_item_type_center_and_maker():
 def test_sandbox_thin_cells_trigger_floor(client, make_tenant):
     sandbox = make_tenant(environment="sandbox")
     body = client.post(
-        f"{BASE}/valuations", headers=sandbox.headers,
+        f"{BASE}/scans", headers=sandbox.headers,
         json=stone(variety="alexandrite", origin=None, treatment="none"),
     ).json()
     assert body["status"] == "insufficient_data"
@@ -227,9 +227,98 @@ def test_sandbox_thin_cells_trigger_floor(client, make_tenant):
 def test_sandbox_unknown_maker_is_insufficient_not_guessed(client, make_tenant):
     sandbox = make_tenant(environment="sandbox")
     body = client.post(
-        f"{BASE}/valuations", headers=sandbox.headers,
+        f"{BASE}/scans", headers=sandbox.headers,
         json=piece(item_type="bracelet", stones=None, brand="Some Famous House", signed=True,
                    metal={"type": "gold", "purity": "18k", "weight_grams": 25}),
     ).json()
     assert body["status"] == "insufficient_data"
     assert body["price"] is None and body["breakdown"] is None
+
+
+# ── identify engine (the scan's first step) ──────────────────────────────────
+
+from enterprise.app import live_identifier_from_settings  # noqa: E402
+from enterprise.engine.base import (  # noqa: E402
+    Identification,
+    IdentificationUnavailable,
+    PendingIdentification,
+    PhotoRef,
+)
+from enterprise.engine.remote import RemoteIdentifyEngine  # noqa: E402
+
+IDENTIFIED = {
+    "status": "identified",
+    "item": {"item_type": "ring", "metal": {"type": "gold", "purity": "18k"}},
+    "confidence": 0.82,
+    "summary": "18k gold ring",
+    "observations": ["Yellow metal", "750 stamp"],
+    "alternatives": [{"label": "14k gold", "probability": 0.1}],
+    "open_questions": ["Weight?"],
+    "next_evidence": ["Weigh it"],
+}
+
+
+def _identifier(handler):
+    return RemoteIdentifyEngine("https://id.internal", "k", transport=httpx.MockTransport(handler))
+
+
+def test_remote_identifier_sends_photos_and_hints():
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=IDENTIFIED)
+
+    photos = [PhotoRef(sha256="a" * 64, media_type="image/jpeg", bytes=3, data=b"abc"),
+              PhotoRef(sha256="b" * 64, url="https://p.example/x.jpg")]
+    result = _identifier(handler).identify(photos, {"item_type": "ring"})
+    assert seen["path"] == "/identify"
+    assert seen["body"]["photos"] == [{"data": "YWJj", "media_type": "image/jpeg"},
+                                      {"url": "https://p.example/x.jpg"}]
+    assert seen["body"]["hints"] == {"item_type": "ring"}
+    assert isinstance(result, Identification)
+    assert result.confidence == 0.82 and result.item["item_type"] == "ring"
+    assert result.alternatives == ({"label": "14k gold", "probability": 0.1},)
+
+
+def test_remote_identifier_pending_then_poll():
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(202, json={"status": "processing", "analysis_id": "ana_123"})
+        assert request.url.path == "/identify/ana_123"
+        return httpx.Response(200, json=IDENTIFIED)
+
+    engine = _identifier(handler)
+    pending = engine.identify([PhotoRef(sha256="c" * 64, url="https://p/x.jpg")], {})
+    assert pending == PendingIdentification(ref="ana_123")
+    assert engine.poll("ana_123").summary == "18k gold ring"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [httpx.Response(500), httpx.Response(200, json={"status": "weird"}),
+     httpx.Response(200, json={"status": "identified"}), httpx.Response(200, content=b"x")],
+)
+def test_remote_identifier_failures(response):
+    with pytest.raises(IdentificationUnavailable):
+        _identifier(lambda request: response).identify([], {})
+
+
+def test_live_identifier_from_settings(settings):
+    assert live_identifier_from_settings(settings) is None
+    remote = settings.model_copy(update={"identify_backend": "remote", "identify_url": "http://x"})
+    assert isinstance(live_identifier_from_settings(remote), RemoteIdentifyEngine)
+    with pytest.raises(RuntimeError):
+        live_identifier_from_settings(settings.model_copy(update={"identify_backend": "remote"}))
+
+
+def test_remote_comps_carry_links_and_differences():
+    def handler(request):
+        return httpx.Response(200, json={"comps": [_comp(
+            1, url="https://market.example/lot/1", photo_url="https://market.example/1.jpg",
+            differences=["Smaller center stone", "14k instead of 18k"])]})
+
+    comp = _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=5).comps[0]
+    assert comp.url == "https://market.example/lot/1"
+    assert comp.differences == ("Smaller center stone", "14k instead of 18k")

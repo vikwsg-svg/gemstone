@@ -1,6 +1,6 @@
-"""Enterprise Comps v1: tenants, scoped API keys, valuations, idempotency, usage, batch jobs.
+"""Enterprise Scan API v1: tenants, scoped API keys, scans, idempotency, usage, batch jobs.
 
-Revision ID: 0001_enterprise_comps_v1
+Revision ID: 0001_enterprise_scan_v1
 Revises:
 Create Date: 2026-11-24
 """
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0001_enterprise_comps_v1"
+revision = "0001_enterprise_scan_v1"
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -41,7 +41,7 @@ def upgrade() -> None:
     op.create_index("ix_ent_api_keys_tenant_id", "ent_api_keys", ["tenant_id"])
 
     op.create_table(
-        "ent_valuations",
+        "ent_scans",
         sa.Column("id", sa.String(40), primary_key=True),
         sa.Column("tenant_id", sa.String(40), sa.ForeignKey("ent_tenants.id"), nullable=False),
         sa.Column("api_key_id", sa.String(40), nullable=False),
@@ -51,17 +51,19 @@ def upgrade() -> None:
         sa.Column("model_version", sa.String(64), nullable=False),
         sa.Column("model_version_source", sa.String(16), nullable=False),
         sa.Column("engine", sa.String(32), nullable=False),
+        sa.Column("identifier", sa.String(32), nullable=True),
+        sa.Column("identification_ref", sa.String(64), nullable=True),
+        sa.Column("photo_count", sa.Integer(), nullable=False),
         sa.Column("comps_used", sa.Integer(), nullable=False),
         sa.Column("request_payload", JSON, nullable=False),
         sa.Column("result", JSON, nullable=False),
         sa.Column("batch_job_id", sa.String(40), nullable=True),
         sa.Column("batch_row", sa.Integer(), nullable=True),
         sa.Column("created_at", TS, nullable=False),
+        sa.Column("completed_at", TS, nullable=True),
     )
-    op.create_index("ix_ent_valuations_batch_job_id", "ent_valuations", ["batch_job_id"])
-    op.create_index(
-        "ix_ent_valuations_tenant_created", "ent_valuations", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_ent_scans_batch_job_id", "ent_scans", ["batch_job_id"])
+    op.create_index("ix_ent_scans_tenant_created", "ent_scans", ["tenant_id", "created_at"])
 
     op.create_table(
         "ent_idempotency_keys",
@@ -81,8 +83,8 @@ def upgrade() -> None:
         sa.Column("tenant_id", sa.String(40), sa.ForeignKey("ent_tenants.id"), primary_key=True),
         sa.Column("product", sa.String(16), primary_key=True),
         sa.Column("day", sa.Date(), primary_key=True),
-        sa.Column("valuations_total", sa.Integer(), nullable=False),
-        sa.Column("valuations_priced", sa.Integer(), nullable=False),
+        sa.Column("scans_total", sa.Integer(), nullable=False),
+        sa.Column("scans_priced", sa.Integer(), nullable=False),
     )
 
     op.create_table(
@@ -113,9 +115,9 @@ def downgrade() -> None:
     op.drop_table("ent_batch_jobs")
     op.drop_table("ent_usage_daily")
     op.drop_table("ent_idempotency_keys")
-    op.drop_index("ix_ent_valuations_tenant_created", table_name="ent_valuations")
-    op.drop_index("ix_ent_valuations_batch_job_id", table_name="ent_valuations")
-    op.drop_table("ent_valuations")
+    op.drop_index("ix_ent_scans_tenant_created", table_name="ent_scans")
+    op.drop_index("ix_ent_scans_batch_job_id", table_name="ent_scans")
+    op.drop_table("ent_scans")
     op.drop_index("ix_ent_api_keys_tenant_id", table_name="ent_api_keys")
     op.drop_table("ent_api_keys")
     op.drop_table("ent_tenants")

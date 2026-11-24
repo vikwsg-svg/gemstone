@@ -49,13 +49,21 @@ from typing import Any, Optional
 
 import httpx
 
+import base64
+from collections.abc import Mapping
+
 from enterprise.engine.base import (
     BREAKDOWN_PARTS,
     CompsEngine,
     EngineComp,
     EngineResult,
     EngineUnavailable,
+    Identification,
+    IdentificationUnavailable,
+    IdentifyEngine,
     ItemQuery,
+    PendingIdentification,
+    PhotoRef,
 )
 
 logger = logging.getLogger(__name__)
@@ -138,10 +146,96 @@ class RemoteCompsEngine(CompsEngine):
                 attributes=dict(raw.get("attributes") or {}),
                 adjusted_price_per_carat=_opt("adjusted_price_per_carat"),
                 adjusted_price_total=_opt("adjusted_price_total"),
+                url=str(raw["url"]) if raw.get("url") else None,
+                photo_url=str(raw["photo_url"]) if raw.get("photo_url") else None,
+                differences=tuple(str(d) for d in (raw.get("differences") or [])),
             )
         except (KeyError, TypeError, ValueError, AttributeError):
             logger.warning("dropping malformed comp from engine: %r", raw)
             return None
+
+    def close(self) -> None:
+        self._client.close()
+
+
+class RemoteIdentifyEngine(IdentifyEngine):
+    """
+    HTTP adapter to the backend's identification pipeline (the scan's first step).
+
+        POST {ENTERPRISE_IDENTIFY_URL}/identify
+        { "photos": [ {"url": "https://..."} | {"data": "<base64>", "media_type": "image/jpeg"} ],
+          "hints": { "item_type": "ring", "metal": {...}, "stones": [...], ... } }   # stated details
+        -> 200 { "status": "identified" | "unidentified",
+                 "item": { "item_type": "ring", "metal": {...}, "stones": [...], "brand": null, ... },
+                 "confidence": 0.86, "summary": "...", "observations": ["..."],
+                 "alternatives": [{"label": "...", "probability": 0.08}],
+                 "open_questions": ["..."], "next_evidence": ["..."] }
+        -> 202 { "status": "processing", "analysis_id": "ana_..." }
+
+        GET {ENTERPRISE_IDENTIFY_URL}/identify/{analysis_id}   -> the same 200 or 202 shapes
+    """
+
+    name = "v2-identify"
+    synthetic = False
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: Optional[str] = None,
+        timeout: float = 20.0,
+        transport: Optional[httpx.BaseTransport] = None,
+    ):
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self._client = httpx.Client(
+            base_url=base_url, timeout=timeout, headers=headers, transport=transport
+        )
+
+    def identify(self, photos: list[PhotoRef], hints: Mapping[str, Any]
+                 ) -> "Identification | PendingIdentification":
+        body = {"photos": [self._photo(p) for p in photos], "hints": dict(hints)}
+        return self._call("POST", "/identify", json=body)
+
+    def poll(self, ref: str) -> "Identification | PendingIdentification":
+        return self._call("GET", f"/identify/{ref}")
+
+    @staticmethod
+    def _photo(p: PhotoRef) -> dict:
+        if p.data is not None:
+            return {"data": base64.b64encode(p.data).decode("ascii"), "media_type": p.media_type}
+        return {"url": p.url}
+
+    def _call(self, method: str, path: str, **kwargs: Any) -> "Identification | PendingIdentification":
+        try:
+            resp = self._client.request(method, path, **kwargs)
+        except httpx.HTTPError as exc:
+            raise IdentificationUnavailable(f"identify engine unreachable: {exc.__class__.__name__}") from exc
+        if resp.status_code not in (200, 202):
+            raise IdentificationUnavailable(f"identify engine returned HTTP {resp.status_code}")
+        try:
+            data = resp.json()
+            status = data.get("status")
+            if resp.status_code == 202 or status == "processing":
+                return PendingIdentification(ref=str(data["analysis_id"]))
+            if status not in ("identified", "unidentified"):
+                raise ValueError(f"unknown status {status!r}")
+            confidence = data.get("confidence")
+            return Identification(
+                status=status,
+                item=dict(data["item"]) if status == "identified" else None,
+                confidence=float(confidence) if confidence is not None else None,
+                summary=data.get("summary"),
+                observations=tuple(str(o) for o in data.get("observations") or ()),
+                alternatives=tuple(
+                    {"label": str(a["label"]), "probability": float(a["probability"])}
+                    for a in data.get("alternatives") or ()
+                ),
+                open_questions=tuple(str(q) for q in data.get("open_questions") or ()),
+                next_evidence=tuple(str(e) for e in data.get("next_evidence") or ()),
+            )
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise IdentificationUnavailable("identify engine returned a malformed response") from exc
 
     def close(self) -> None:
         self._client.close()

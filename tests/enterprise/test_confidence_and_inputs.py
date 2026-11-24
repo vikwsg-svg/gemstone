@@ -158,7 +158,7 @@ def test_api_returns_heated_vs_unheated_scenarios(client, tenant, live_engine):
         "heated": [make_comp(i, ppc=1000) for i in range(6)],
     }
     body = client.post(
-        f"{BASE}/valuations", headers=tenant.headers,
+        f"{BASE}/scans", headers=tenant.headers,
         json=stone(treatment=None, valuation_basis="retail_replacement"),
     ).json()
     s = {x["scenario_id"]: x for x in body["scenarios"]}
@@ -201,12 +201,12 @@ def test_vocab_normalization():
 
 def test_loose_stone_request_is_normalized_and_echoed(client, tenant, live_engine):
     body = client.post(
-        f"{BASE}/valuations", headers=tenant.headers,
+        f"{BASE}/scans", headers=tenant.headers,
         json=stone(variety="Sapphire", origin="Ceylon", lab="Gübelin", treatment="no heat",
                    dimensions_mm={"length": 8.1, "width": 6.2, "depth": 4.0},
                    client_reference="LOT-77"),
     ).json()
-    norm = body["normalized_inputs"]["stones"][0]
+    norm = body["item"]["stones"][0]
     assert body["item_type"] == "loose_stone"
     assert norm["variety"] == "blue_sapphire"
     assert norm["species"] == "corundum"
@@ -221,14 +221,14 @@ def test_loose_stone_request_is_normalized_and_echoed(client, tenant, live_engin
 
 def test_piece_request_is_normalized(client, tenant, live_engine):
     body = client.post(
-        f"{BASE}/valuations", headers=tenant.headers,
+        f"{BASE}/scans", headers=tenant.headers,
         json=piece(metal={"type": "Yellow Gold", "purity": "750", "color": "Yellow",
                           "weight_grams": 4.2},
                    stones=[{"variety": "Diamonds", "carat": 1.1, "shape": "Round",
                             "growth": "lab-created", "color_grade": "F", "clarity": "VVS2"}],
                    brand="Maison Aurelle", signed=True, era="Art Deco"),
     ).json()
-    norm = body["normalized_inputs"]
+    norm = body["item"]
     assert norm["metal"] == {"type": "gold", "purity": "18k", "color": "yellow", "weight_grams": 4.2}
     assert norm["stones"][0]["variety"] == "diamond"
     assert norm["stones"][0]["species"] == "diamond"
@@ -277,6 +277,6 @@ def _with(payload, path, value):
 )
 def test_invalid_requests_are_rejected(client, tenant, build):
     payload = build()
-    resp = client.post(f"{BASE}/valuations", headers=tenant.headers, json=payload)
+    resp = client.post(f"{BASE}/scans", headers=tenant.headers, json=payload)
     assert resp.status_code == 422, payload
     assert resp.json()["error"]["code"] == "invalid_request"

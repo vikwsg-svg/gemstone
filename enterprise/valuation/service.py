@@ -1,7 +1,7 @@
 """
-The Comps valuation service.
+The pricing half of a scan: values an identified item.
 
-Flow for one valuation:
+Flow (enterprise/scan.py runs identification first, then calls price_item):
 1. Resolve the model version (request pin > tenant pin > default).
 2. Pick the engine: sandbox tenants get synthetic data; live tenants get the
    production engine (or a 503 if none is configured, never a silent fallback).
@@ -15,7 +15,6 @@ Flow for one valuation:
    per carat for a loose stone (total = per carat x carat), per item for a
    finished piece (with the engine's Raw/Make/Market split of the mid value).
 7. Score confidence, price scenarios for unknown treatment/origin.
-8. Persist the full record (inputs, comps, model version, output) and meter it.
 """
 
 import math
@@ -24,7 +23,6 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from enterprise.auth import Principal
 from enterprise.deps import AppState
 from enterprise.engine.base import (
     BREAKDOWN_PARTS,
@@ -36,10 +34,7 @@ from enterprise.engine.base import (
     ItemQuery,
 )
 from enterprise.errors import ApiError
-from enterprise.ids import new_id
-from enterprise.metering import record_valuation
-from enterprise.models import Tenant, Valuation
-from enterprise.schemas import ValuationRequest, ValuationResponse
+from enterprise.models import Tenant
 from enterprise.valuation.confidence import UsedComp, assess
 from enterprise.valuation.model_versions import ModelVersion, UnknownModelVersion
 from enterprise.valuation.scenarios import build_scenarios
@@ -276,13 +271,16 @@ class ValuationService:
             breakdown_shares=None if loose else result.breakdown_shares,
         )
 
-    def _confidence(self, query: ItemQuery, run: PricingRun) -> dict:
+    def _confidence(
+        self, query: ItemQuery, run: PricingRun, identification_confidence: Optional[float]
+    ) -> dict:
         return assess(
             query=query,
             used=[e.used_view() for e in run.used],
             qualified_count=run.qualified,
             band_mid_low_high=run.confidence_band(query.is_loose),
             today=self.state.clock().date(),
+            identification_confidence=identification_confidence,
         )
 
     @staticmethod
@@ -296,9 +294,16 @@ class ValuationService:
             for part in BREAKDOWN_PARTS
         }
 
-    def evaluate(self, tenant: Tenant, request: ValuationRequest) -> tuple[dict, CompsEngine]:
-        """Compute a valuation body (without id/timestamps). Raises ApiError."""
-        mv, mv_source = self.resolve_model(tenant, request.model_version)
+    def price_item(
+        self,
+        tenant: Tenant,
+        query: ItemQuery,
+        basis: str,
+        mv: ModelVersion,
+        mv_source: str,
+        identification_confidence: Optional[float] = None,
+    ) -> tuple[dict, CompsEngine]:
+        """Price an identified item: the pricing half of a scan result. Raises ApiError."""
         engine = self.engine_for(tenant)
         if not engine.supports(mv.engine_version):
             raise ApiError(
@@ -306,11 +311,9 @@ class ValuationService:
                 "model_version_unavailable",
                 f"Model version {mv.id} is not served by the current engine.",
             )
-        query = request.to_query()
-        basis = request.valuation_basis
 
         primary = self._price(engine, mv, query, basis)
-        confidence = self._confidence(query, primary)
+        confidence = self._confidence(query, primary, identification_confidence)
 
         scenarios = []
         for sc in build_scenarios(query):
@@ -323,7 +326,7 @@ class ValuationService:
                     "status": run.status,
                     "price": run.price,
                     "comps_used": len(run.used) if run.status == "priced" else run.qualified,
-                    "confidence": self._confidence(sc.query, run),
+                    "confidence": self._confidence(sc.query, run, identification_confidence),
                 }
             )
 
@@ -342,10 +345,8 @@ class ValuationService:
             )
 
         used = primary.used if primary.status == "priced" else []
-        body = {
-            "object": "valuation",
+        fragment = {
             "status": primary.status,
-            "product": "comps",
             "item_type": query.item_type,
             "model_version": mv.id,
             "model_version_source": mv_source,
@@ -353,9 +354,7 @@ class ValuationService:
             "synthetic_data": engine.synthetic,
             "valuation_basis": basis,
             "currency": SUPPORTED_CURRENCY,
-            "client_reference": request.client_reference,
-            "inputs": request.model_dump(mode="json"),
-            "normalized_inputs": query.to_dict(),
+            "item": query.to_dict(),
             "price": primary.price,
             "breakdown": self._breakdown(primary),
             "confidence": confidence,
@@ -373,52 +372,4 @@ class ValuationService:
             "scenarios": scenarios,
             "warnings": warnings,
         }
-        return body, engine
-
-    # ── persistence ──────────────────────────────────────────────────────────
-
-    def create(
-        self,
-        principal: Principal,
-        request: ValuationRequest,
-        *,
-        batch_job_id: Optional[str] = None,
-        batch_row: Optional[int] = None,
-    ) -> dict:
-        """Evaluate, persist and meter one valuation. Stages rows; the caller commits."""
-        body, engine = self.evaluate(principal.tenant, request)
-        now = self.state.clock()
-        body["valuation_id"] = new_id("val")
-        body["created_at"] = now.isoformat()
-        body["batch_job_id"] = batch_job_id
-        # Validate against the public schema (which re-checks the 5-comp floor)
-        # so that what we store is exactly what the contract promises.
-        body = ValuationResponse.model_validate(body).model_dump(mode="json")
-
-        self.session.add(
-            Valuation(
-                id=body["valuation_id"],
-                tenant_id=principal.tenant.id,
-                api_key_id=principal.api_key.id,
-                product="comps",
-                status=body["status"],
-                valuation_basis=body["valuation_basis"],
-                model_version=body["model_version"],
-                model_version_source=body["model_version_source"],
-                engine=engine.name,
-                comps_used=body["comps_summary"]["used"],
-                request_payload=body["inputs"],
-                result=body,
-                batch_job_id=batch_job_id,
-                batch_row=batch_row,
-                created_at=now,
-            )
-        )
-        record_valuation(
-            self.session,
-            tenant_id=principal.tenant.id,
-            product="comps",
-            day=now.date(),
-            priced=body["status"] == "priced",
-        )
-        return body
+        return fragment, engine

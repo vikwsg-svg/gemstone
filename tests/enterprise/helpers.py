@@ -4,7 +4,16 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from enterprise.engine.base import CompsEngine, EngineComp, EngineResult, ItemQuery
+from enterprise.engine.base import (
+    CompsEngine,
+    EngineComp,
+    EngineResult,
+    Identification,
+    IdentificationUnavailable,
+    IdentifyEngine,
+    ItemQuery,
+    PendingIdentification,
+)
 
 BASE = "/enterprise/v1"
 FIXED_NOW = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
@@ -145,3 +154,60 @@ def piece(**overrides) -> dict:
     }
     body.update(overrides)
     return {k: v for k, v in body.items() if v is not None}
+
+
+RING_IDENTIFICATION = Identification(
+    status="identified",
+    item={
+        "item_type": "ring",
+        "metal": {"type": "platinum", "purity": "950"},
+        "stones": [
+            {"role": "center", "variety": "diamond", "carat": 1.0, "shape": "round",
+             "growth": "natural"},
+            {"role": "side", "variety": "diamond", "carat": 0.4, "count": 12, "shape": "round"},
+        ],
+        "condition": "excellent",
+    },
+    confidence=0.9,
+    summary="Platinum ring with a round diamond of about 1 ct",
+    observations=("Round brilliant center stone", "PT950 stamp inside the band"),
+    alternatives=({"label": "Center stone is moissanite", "probability": 0.05},),
+    open_questions=("How much does the ring weigh?",),
+    next_evidence=("Weigh the ring in grams",),
+)
+
+
+class FakeIdentifier(IdentifyEngine):
+    """Returns a fixed identification; can stay pending for ``pending`` polls, or fail."""
+
+    name = "fake-identify"
+    synthetic = False
+
+    def __init__(self, result: Identification = RING_IDENTIFICATION, pending: int = 0,
+                 fail: bool = False):
+        self.result = result
+        self.pending = pending
+        self.fail = fail
+        self.calls: list[tuple[list, dict]] = []
+        self.polls = 0
+
+    def identify(self, photos, hints):
+        self.calls.append((list(photos), dict(hints)))
+        if self.fail:
+            raise IdentificationUnavailable("down")
+        if self.pending > 0:
+            return PendingIdentification(ref="ana_test_123")
+        return self.result
+
+    def poll(self, ref):
+        self.polls += 1
+        if self.fail:
+            raise IdentificationUnavailable("down")
+        self.pending -= 1
+        if self.pending > 0:
+            return PendingIdentification(ref=ref)
+        return self.result
+
+
+def photo_url(n: int = 1) -> list[dict]:
+    return [{"url": f"https://photos.example.com/item-{i}.jpg"} for i in range(n)]

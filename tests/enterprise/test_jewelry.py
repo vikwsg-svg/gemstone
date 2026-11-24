@@ -11,7 +11,7 @@ SHARES = {"raw": 0.5, "make": 0.2, "market": 0.3}
 
 
 def _value(client, tenant, payload):
-    resp = client.post(f"{BASE}/valuations", headers=tenant.headers, json=payload)
+    resp = client.post(f"{BASE}/scans", headers=tenant.headers, json=payload)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -119,11 +119,11 @@ def test_batch_with_pieces_and_loose_stones(client, tenant, live_engine):
         "X1,ring,,,,,,,,,,,,\n"
     )
     job = client.post(
-        f"{BASE}/valuations/batch", headers=tenant.headers,
+        f"{BASE}/scans/batch", headers=tenant.headers,
         files={"file": ("mixed.csv", text, "text/csv")}, data={"valuation_basis": "fair_market"},
     ).json()
     rows = list(csv.DictReader(io.StringIO(client.get(
-        f"{BASE}/valuations/batch/{job['job_id']}/results", headers=tenant.headers).text)))
+        f"{BASE}/scans/batch/{job['job_id']}/results", headers=tenant.headers).text)))
     by_id = {r["row_id"]: r for r in rows}
 
     assert by_id["R1"]["item_type"] == "ring" and by_id["R1"]["status"] == "priced"

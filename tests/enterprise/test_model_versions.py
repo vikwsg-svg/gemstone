@@ -11,12 +11,12 @@ from enterprise.valuation.model_versions import (
 )
 from tests.enterprise.helpers import BASE, stone
 
-CURRENT = "comps-2026.11.0"
-OLDER = "comps-2026.09.0"
+CURRENT = "scan-2026.11.0"
+OLDER = "scan-2026.09.0"
 
 
 def _value(client, tenant, **overrides):
-    return client.post(f"{BASE}/valuations", headers=tenant.headers, json=stone(**overrides))
+    return client.post(f"{BASE}/scans", headers=tenant.headers, json=stone(**overrides))
 
 
 def test_default_version_is_stamped(client, tenant, live_engine):
@@ -63,7 +63,7 @@ def test_pinned_versions_reproduce_their_own_results(client, tenant):
     a1 = _value(client, tenant, model_version=OLDER).json()
     a2 = _value(client, tenant, model_version=OLDER).json()
     assert a1["price"] == a2["price"]
-    assert a1["valuation_id"] != a2["valuation_id"]
+    assert a1["scan_id"] != a2["scan_id"]
 
 
 def test_models_endpoint_reports_pin(client, make_tenant):

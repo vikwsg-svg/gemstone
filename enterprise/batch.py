@@ -1,19 +1,20 @@
 """
-CSV batch valuations (portfolio revaluation).
+CSV batch scans (portfolio revaluation, intake queues).
 
 Upload a CSV; a job is created and processed asynchronously. Each row
-becomes a normal persisted, metered valuation linked to the job. Rows that
+becomes a normal persisted, metered scan linked to the job. Rows that
 fail validation are reported in the results CSV rather than failing the job.
 
 Input columns (header row required, case-insensitive, extra columns ignored):
-    row_id, item_type (default loose_stone), valuation_basis
+    row_id, photo_urls (up to 5 https links separated by "|"),
+    item_type (default loose_stone when the row has no photos), valuation_basis
     center or loose stone: variety, species, carat, shape, color_grade, clarity,
         cut_grade, treatment, origin, growth, lab, lab_report_number,
         length_mm, width_mm, depth_mm
     side stones: side_variety (default diamond), side_carat_total, side_count, side_growth
     metal: metal_type, metal_purity, metal_color, metal_weight_grams
     piece: brand, signed, era, condition
-The header must include at least one of variety, item_type or metal_type.
+The header must include at least one of photo_urls, variety, item_type or metal_type.
 ``valuation_basis`` per row overrides the job-level default.
 
 The whole batch is pinned to one model version, resolved at submission.
@@ -35,8 +36,8 @@ from enterprise.auth import Principal
 from enterprise.deps import AppState
 from enterprise.errors import ApiError
 from enterprise.models import ApiKey, BatchJob, Tenant
-from enterprise.schemas import ValuationRequest
-from enterprise.valuation.service import ValuationService
+from enterprise.scan import ScanService, format_validation_error
+from enterprise.schemas import ScanRequest
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,13 @@ _SIDE_COLUMNS = ("side_variety", "side_carat_total", "side_count", "side_growth"
 _METAL_COLUMNS = ("metal_type", "metal_purity", "metal_color", "metal_weight_grams")
 _PIECE_COLUMNS = ("brand", "signed", "era", "condition")
 INPUT_COLUMNS = (
-    "row_id", "item_type", *_STONE_COLUMNS, "length_mm", "width_mm", "depth_mm",
+    "row_id", "photo_urls", "item_type", *_STONE_COLUMNS, "length_mm", "width_mm", "depth_mm",
     *_SIDE_COLUMNS, *_METAL_COLUMNS, *_PIECE_COLUMNS, "valuation_basis",
 )
-IDENTIFYING_COLUMNS = ("variety", "item_type", "metal_type")
+IDENTIFYING_COLUMNS = ("photo_urls", "variety", "item_type", "metal_type")
 RESULT_COLUMNS = (
-    "row_number", "row_id", "item_type", "status", "valuation_id", "currency", "valuation_basis",
+    "row_number", "row_id", "status", "scan_id", "identified_as", "identification_confidence",
+    "item_type", "currency", "valuation_basis",
     "per_carat_low", "per_carat_mid", "per_carat_high", "total_low", "total_mid", "total_high",
     "breakdown_raw", "breakdown_make", "breakdown_market",
     "confidence_score", "confidence_level", "reason_codes", "comps_used", "realized_comps",
@@ -65,7 +67,7 @@ RESULT_COLUMNS = (
 class BatchRow:
     row_number: int
     row_id: Optional[str]
-    request: Optional[ValuationRequest]
+    request: Optional[ScanRequest]
     error: Optional[str]
 
 
@@ -74,15 +76,6 @@ def decode_csv(raw: bytes) -> str:
         return raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ApiError(422, "invalid_csv", "The file must be a UTF-8 encoded CSV.") from exc
-
-
-def _format_validation_error(exc: ValidationError) -> str:
-    parts = []
-    for err in exc.errors():
-        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "__root__")
-        msg = err.get("msg", "invalid")
-        parts.append(f"{loc}: {msg}" if loc else msg)
-    return "; ".join(parts)
 
 
 def parse_rows(
@@ -130,16 +123,22 @@ def parse_rows(
         if row_id:
             payload["client_reference"] = row_id
         try:
-            request = ValuationRequest(**payload)
+            request = ScanRequest(**payload)
             rows.append(BatchRow(row_number, row_id, request, None))
         except ValidationError as exc:
-            rows.append(BatchRow(row_number, row_id, None, _format_validation_error(exc)))
+            rows.append(BatchRow(row_number, row_id, None, format_validation_error(exc)))
     return rows
 
 
 def _row_payload(values: dict[str, str]) -> dict:
     """Map one CSV row onto the ValuationRequest shape."""
-    payload: dict = {"item_type": values.get("item_type") or "loose_stone"}
+    payload: dict = {}
+    urls = [u.strip() for u in (values.get("photo_urls") or "").split("|") if u.strip()]
+    if urls:
+        payload["photos"] = [{"url": u} for u in urls]
+    item_type = values.get("item_type") or (None if urls else "loose_stone")
+    if item_type:
+        payload["item_type"] = item_type
     stones = []
     stone = {k: values[k] for k in _STONE_COLUMNS if values.get(k)}
     if stone:
@@ -181,23 +180,28 @@ def _result_row(row: BatchRow, body: Optional[dict], error: Optional[str]) -> di
     out = {col: "" for col in RESULT_COLUMNS}
     out["row_number"] = row.row_number
     out["row_id"] = _safe_cell(row.row_id)
-    if row.request is not None:
-        out["item_type"] = row.request.item_type
+
     if body is None:
         out["status"] = "error"
         out["error"] = _safe_cell(error)
         return out
+    ident = body.get("identification") or {}
+    summary = body.get("comps_summary") or {}
+    confidence = body.get("confidence") or {}
     out.update(
         status=body["status"],
-        valuation_id=body["valuation_id"],
+        scan_id=body["scan_id"],
+        identified_as=_safe_cell(ident.get("summary")),
+        identification_confidence=ident.get("confidence") if ident.get("confidence") is not None else "",
+        item_type=body.get("item_type") or "",
         currency=body["currency"],
         valuation_basis=body["valuation_basis"],
-        confidence_score=body["confidence"]["score"],
-        confidence_level=body["confidence"]["level"],
-        reason_codes="|".join(r["code"] for r in body["confidence"]["reasons"]),
-        comps_used=body["comps_summary"]["used"],
-        realized_comps=body["comps_summary"]["realized"],
-        asking_comps=body["comps_summary"]["asking"],
+        confidence_score=confidence.get("score", ""),
+        confidence_level=confidence.get("level", ""),
+        reason_codes="|".join(r["code"] for r in confidence.get("reasons", [])),
+        comps_used=summary.get("used", ""),
+        realized_comps=summary.get("realized", ""),
+        asking_comps=summary.get("asking", ""),
         model_version=body["model_version"],
         synthetic_data=str(body["synthetic_data"]).lower(),
     )
@@ -235,7 +239,7 @@ def process_batch_job(state: AppState, job_id: str) -> None:
                 tenant=session.get(Tenant, job.tenant_id),
                 api_key=session.get(ApiKey, job.api_key_id),
             )
-            service = ValuationService(state, session)
+            service = ScanService(state, session)
             rows = parse_rows(
                 job.input_csv,
                 default_basis=job.valuation_basis,
@@ -248,7 +252,8 @@ def process_batch_job(state: AppState, job_id: str) -> None:
                 if row.request is not None:
                     try:
                         body = service.create(
-                            principal, row.request, batch_job_id=job.id, batch_row=row.row_number
+                            principal, row.request, batch_job_id=job.id, batch_row=row.row_number,
+                            wait_seconds=state.settings.identify_timeout_seconds,
                         )
                     except ApiError as exc:
                         session.rollback()
@@ -257,7 +262,7 @@ def process_batch_job(state: AppState, job_id: str) -> None:
                     job.failed_rows += 1
                 elif body["status"] == "priced":
                     job.priced_rows += 1
-                else:
+                else:  # insufficient_data, unidentified or still processing
                     job.insufficient_rows += 1
                 job.processed_rows += 1
                 results.append(_result_row(row, body, error))

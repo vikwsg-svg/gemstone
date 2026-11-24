@@ -353,6 +353,17 @@ def _stone_matches(q: StoneSpec, c: Optional[dict]) -> bool:
     return q.treatment is None or c.get("treatment") == q.treatment
 
 
+def _raw_value(rec: dict, center: Optional[dict]) -> float:
+    """Materials value of a synthetic piece (metal + stones) under the synthetic model."""
+    metal = rec["metal"]
+    value = metal["weight_grams"] * _PURITY_FRACTION[metal["purity"]] * _SPOT_PER_GRAM[metal["type"]]
+    if center:
+        value += _stone_ppc(center) * center["carat"]
+    if rec["side"]:
+        value += _SIDE_DIAMOND_PPC[rec["side"]["growth"]] * rec["side"]["carat"]
+    return value
+
+
 def _center(query: ItemQuery) -> Optional[StoneSpec]:
     return next((s for s in query.stones if s.role == "center"), None)
 
@@ -453,9 +464,13 @@ class SandboxEngine(CompsEngine):
             if query.brand is not None and rec["brand"] != query.brand:
                 continue
             c_side = rec["side"]["carat"] if rec["side"] else 0.0
+            origin_score = 1.0
+            if center is not None and center.variety != "diamond" and center.origin is not None:
+                origin_score = 1.0 if center.origin == c_center.get("origin") else 0.4
             parts = {
                 "center_carat": _closeness(center.carat, c_center["carat"], 0.35) if center else 1.0,
-                "center_quality": _stone_quality(center, c_center) if center else 1.0,
+                "center_quality": (_stone_quality(center, c_center) + origin_score) / 2
+                if center else 1.0,
                 "metal": 0.7 if metal is None else (1.0 if metal.type == rec["metal"]["type"] else 0.35),
                 "purity": 0.75 if metal is None or metal.purity is None
                 else (1.0 if metal.purity == rec["metal"]["purity"] else 0.7),
@@ -468,11 +483,20 @@ class SandboxEngine(CompsEngine):
                 "condition": _ordered(query.condition, rec["condition"], _COND_ORDER),
             }
             similarity = sum(w[k] * parts[k] for k in w) / sum(w.values())
-            adjusted = None
-            if (version == "v2.4" and query.condition in _CONDITIONS
-                    and query.condition != rec["condition"]):
-                factor = _CONDITIONS[query.condition][0] / _CONDITIONS[rec["condition"]][0]
-                adjusted = round(rec["price_total"] * factor, 2)
+            # v2.4 adjusts each comp toward the subject: the center stone's origin
+            # (re-valuing that stone within the piece) and the piece's condition.
+            factor = 1.0
+            if version == "v2.4":
+                spec = _COLORED.get(c_center["variety"]) if c_center else None
+                if (center is not None and spec is not None and center.origin in spec.origins
+                        and center.origin != c_center.get("origin")):
+                    raw = _raw_value(rec, c_center)
+                    swapped = {**c_center, "origin": center.origin}
+                    delta = (_stone_ppc(swapped) - _stone_ppc(c_center)) * c_center["carat"]
+                    factor *= (raw + delta) / raw
+                if query.condition in _CONDITIONS and query.condition != rec["condition"]:
+                    factor *= _CONDITIONS[query.condition][0] / _CONDITIONS[rec["condition"]][0]
+            adjusted = round(rec["price_total"] * factor, 2) if factor != 1.0 else None
             attrs = {
                 "item_type": rec["item_type"],
                 "metal_type": rec["metal"]["type"], "metal_purity": rec["metal"]["purity"],

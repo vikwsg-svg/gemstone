@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from enterprise.app import create_app
-from enterprise.models import BatchJob, Valuation
+from enterprise.models import BatchJob, Scan
 from tests.enterprise.helpers import BASE, make_comp
 
 CSV_OK = """row_id,variety,carat,shape,treatment,origin,lab,lab_report_number,valuation_basis
@@ -22,7 +22,7 @@ A-3,blue sapphire,,oval,heated,,,,
 def _submit(client, tenant, text=CSV_OK, headers=None, **data):
     data.setdefault("valuation_basis", "fair_market")
     return client.post(
-        f"{BASE}/valuations/batch",
+        f"{BASE}/scans/batch",
         headers={**tenant.headers, **(headers or {})},
         files={"file": ("stones.csv", text.encode("utf-8"), "text/csv")},
         data=data,
@@ -30,7 +30,7 @@ def _submit(client, tenant, text=CSV_OK, headers=None, **data):
 
 
 def _results(client, tenant, job_id):
-    resp = client.get(f"{BASE}/valuations/batch/{job_id}/results", headers=tenant.headers)
+    resp = client.get(f"{BASE}/scans/batch/{job_id}/results", headers=tenant.headers)
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"].startswith("text/csv")
     return list(csv.DictReader(io.StringIO(resp.text)))
@@ -42,14 +42,14 @@ def test_batch_round_trip(client, tenant, live_engine, db):
     job = resp.json()
     assert job["object"] == "batch_job"
     assert job["total_rows"] == 4
-    assert job["model_version"] == "comps-2026.11.0"  # resolved and pinned at submission
+    assert job["model_version"] == "scan-2026.11.0"  # resolved and pinned at submission
 
-    status = client.get(f"{BASE}/valuations/batch/{job['job_id']}", headers=tenant.headers).json()
+    status = client.get(f"{BASE}/scans/batch/{job['job_id']}", headers=tenant.headers).json()
     assert status["status"] == "completed"
     assert status["processed_rows"] == 4
     assert status["priced_rows"] == 3
     assert status["failed_rows"] == 1
-    assert status["results_url"] == f"{BASE}/valuations/batch/{job['job_id']}/results"
+    assert status["results_url"] == f"{BASE}/scans/batch/{job['job_id']}/results"
 
     rows = _results(client, tenant, job["job_id"])
     assert [r["row_id"] for r in rows] == ["A-1", "A-2", "A-3", "'=HYPERLINK(\"x\")"]
@@ -59,26 +59,26 @@ def test_batch_round_trip(client, tenant, live_engine, db):
     assert int(rows[1]["per_carat_mid"]) == 550  # asking 1000 x 0.55
     assert rows[2]["status"] == "error"
     assert "carat" in rows[2]["error"]
-    assert rows[0]["model_version"] == "comps-2026.11.0"
+    assert rows[0]["model_version"] == "scan-2026.11.0"
 
     # Each priced row is a normal, retrievable, audited valuation linked to the job.
     valuation = client.get(
-        f"{BASE}/valuations/{rows[0]['valuation_id']}", headers=tenant.headers
+        f"{BASE}/scans/{rows[0]['scan_id']}", headers=tenant.headers
     ).json()
     assert valuation["batch_job_id"] == job["job_id"]
     assert valuation["client_reference"] == "A-1"
     with db.session_scope() as s:
-        linked = s.scalars(select(Valuation).where(Valuation.batch_job_id == job["job_id"])).all()
+        linked = s.scalars(select(Scan).where(Scan.batch_job_id == job["job_id"])).all()
         assert sorted(v.batch_row for v in linked) == [1, 2, 4]
 
     usage = client.get(f"{BASE}/usage", headers=tenant.headers).json()
-    assert usage["data"][0]["valuations_total"] == 3
+    assert usage["data"][0]["scans_total"] == 3
 
 
 def test_batch_reports_insufficient_rows(client, tenant, live_engine):
     live_engine.comps = [make_comp(i) for i in range(3)]
     job = _submit(client, tenant, "variety,carat,shape\nruby,1.0,oval\n").json()
-    status = client.get(f"{BASE}/valuations/batch/{job['job_id']}", headers=tenant.headers).json()
+    status = client.get(f"{BASE}/scans/batch/{job['job_id']}", headers=tenant.headers).json()
     assert status["insufficient_rows"] == 1
     row = _results(client, tenant, job["job_id"])[0]
     assert row["status"] == "insufficient_data"
@@ -88,9 +88,9 @@ def test_batch_reports_insufficient_rows(client, tenant, live_engine):
 
 def test_batch_honours_model_version_pin(client, tenant, live_engine):
     job = _submit(
-        client, tenant, "variety,carat,shape\nruby,1.0,oval\n", model_version="comps-2026.09.0"
+        client, tenant, "variety,carat,shape\nruby,1.0,oval\n", model_version="scan-2026.09.0"
     ).json()
-    assert job["model_version"] == "comps-2026.09.0"
+    assert job["model_version"] == "scan-2026.09.0"
     assert live_engine.calls[-1][1] == "v2.3"
 
 
@@ -110,7 +110,7 @@ def test_invalid_csv_is_rejected_up_front(client, tenant, text, code):
 
 def test_non_utf8_is_rejected(client, tenant):
     resp = client.post(
-        f"{BASE}/valuations/batch",
+        f"{BASE}/scans/batch",
         headers=tenant.headers,
         files={"file": ("s.csv", "variety,carat,shape\nrubí,1,oval\n".encode("latin-1"))},
     )
@@ -134,7 +134,7 @@ def test_results_before_completion_is_409(client, tenant, db, clock):
         s.add(BatchJob(id="bat_pending", tenant_id=tenant.tenant_id, api_key_id=tenant.key_id,
                        status="queued", total_rows=1, input_csv="x", created_at=clock()))
         s.commit()
-    resp = client.get(f"{BASE}/valuations/batch/bat_pending/results", headers=tenant.headers)
+    resp = client.get(f"{BASE}/scans/batch/bat_pending/results", headers=tenant.headers)
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "batch_not_completed"
 

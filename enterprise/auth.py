@@ -25,9 +25,9 @@ from enterprise.errors import ApiError
 from enterprise.ids import new_id
 from enterprise.models import ApiKey, Tenant
 
-# One scope per product. Only "comps" has endpoints in v1; the rest are reserved
+# One scope per product. Only "scan" has endpoints in v1; the rest are reserved
 # so keys can be issued for pilots without a schema change.
-PRODUCTS = ("comps", "intake", "estimate", "verify", "index")
+PRODUCTS = ("scan", "intake", "estimate", "verify", "index")
 
 KEY_PATTERN = re.compile(r"^gsk_(live|test)_([a-z0-9]{12})_([A-Za-z0-9]{32})$")
 _ID_ALPHABET = string.ascii_lowercase + string.digits

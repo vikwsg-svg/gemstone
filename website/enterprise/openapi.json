@@ -2,18 +2,18 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GemstoneAI Enterprise API",
-    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for colored gemstones.\n\n**Comps** (this version) returns a defensible value for a stone with the evidence attached:\na price band in your chosen valuation basis, the comparables behind it (each tagged as a\nrealized sale or an asking price), a confidence score with reason codes, and scenario pricing\nfor unknown treatment or origin.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys run against synthetic stones; responses carry `synthetic_data: true`.\n* **No guessing:** fewer than 5 qualifying comparables means no price (`insufficient_data`).\n* **Audit:** every valuation is stored and retrievable by `valuation_id`.\n* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
+    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for jewelry.\n\nThe **Scan API** is the business version of a GemstoneAI scan result. Send photos of a piece\nof jewelry or a loose stone, its details, or both, and get back what it is and what it's worth:\nthe identification (observations, alternatives, open questions, next evidence), a price range in\nyour chosen valuation basis, a Raw/Make/Market breakdown for pieces, the comparables behind it\n(each tagged as a realized sale or an asking price), a confidence score with reason codes, and\nscenario pricing for unknowns such as natural vs lab-grown.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys run against simulated identification and synthetic comparables;\n  responses carry `synthetic_data: true`.\n* **No guessing:** an item that can't be identified well enough (`unidentified`), or fewer than 5\n  qualifying comparables (`insufficient_data`), means no price.\n* **Audit:** every scan is stored and retrievable by `scan_id`.\n* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
     "version": "1.0.0"
   },
   "paths": {
-    "/valuations": {
+    "/scans": {
       "post": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
-        "summary": "Value a piece of jewelry or a loose stone",
-        "description": "Values a finished piece (ring, earrings, necklace, pendant, bracelet, brooch) or a loose diamond or gemstone. Returns a low/mid/high price band in the requested valuation basis (also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the comparables used, a confidence score with reason codes, and scenario pricing for unknown natural-vs-lab-grown, treatment or origin. **If fewer than 5 comparables qualify, no price is returned**: `status` is `insufficient_data` and the closest comps are listed. Every valuation is stored and retrievable by `valuation_id`.",
-        "operationId": "create_valuation_valuations_post",
+        "summary": "Scan a piece of jewelry or a loose stone",
+        "description": "The business version of a GemstoneAI scan result. Send 1-5 photos of one item, the item's details, or both (stated details always win over what the photos suggest). Returns the identification (summary, observations, alternatives, open questions and the next evidence that would settle them), then the price: a low/mid/high range in the requested valuation basis (also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the comparables used (each tagged realized sale or asking price), a confidence score with reason codes, and scenario pricing for unknowns. **No guessing:** an item that cannot be identified well enough returns `unidentified`, and fewer than 5 qualifying comparables returns `insufficient_data`, both with no price. If identification is still running the response is `202` with `status: processing`; retrieve the scan with `GET /scans/{scan_id}`. Every scan is stored and retrievable.",
+        "operationId": "create_scan_scans_post",
         "security": [
           {
             "HTTPBearer": []
@@ -36,10 +36,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours.",
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
               "title": "Idempotency-Key"
             },
-            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours."
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours."
           }
         ],
         "requestBody": {
@@ -47,7 +47,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ValuationRequest"
+                "$ref": "#/components/schemas/ScanRequest"
               }
             }
           }
@@ -58,7 +58,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValuationResponse"
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted; identification still running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
                 }
               }
             }
@@ -94,7 +104,7 @@
             }
           },
           "503": {
-            "description": "Pricing engine unavailable.",
+            "description": "Identification or pricing engine unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -106,13 +116,13 @@
         }
       }
     },
-    "/valuations/{valuation_id}": {
+    "/scans/{scan_id}": {
       "get": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
-        "summary": "Retrieve a stored valuation (audit trail)",
-        "operationId": "get_valuation_valuations__valuation_id__get",
+        "summary": "Retrieve a scan (audit trail, or the result of a processing scan)",
+        "operationId": "get_scan_scans__scan_id__get",
         "security": [
           {
             "HTTPBearer": []
@@ -123,13 +133,13 @@
         ],
         "parameters": [
           {
-            "name": "valuation_id",
+            "name": "scan_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "maxLength": 40,
-              "title": "Valuation Id"
+              "title": "Scan Id"
             }
           }
         ],
@@ -139,7 +149,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValuationResponse"
+                  "$ref": "#/components/schemas/ScanResponse"
                 }
               }
             }
@@ -187,14 +197,14 @@
         }
       }
     },
-    "/valuations/batch": {
+    "/scans/batch": {
       "post": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
-        "summary": "Submit a CSV of pieces and stones for batch valuation",
-        "description": "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `item_type` (default `loose_stone`), `valuation_basis`; center or loose stone: `variety`, `species`, `carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, `growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: `side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, `metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, `condition`. The header must include `variety`, `item_type` or `metal_type`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
-        "operationId": "create_batch_valuations_batch_post",
+        "summary": "Submit a CSV of items to scan in batch",
+        "description": "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `photo_urls` (up to 5 public https links separated by `|`), `item_type` (default `loose_stone` when a row has no photos), `valuation_basis`; center or loose stone: `variety`, `species`, `carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, `growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: `side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, `metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, `condition`. The header must include `photo_urls`, `variety`, `item_type` or `metal_type`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
+        "operationId": "create_batch_scans_batch_post",
         "security": [
           {
             "HTTPBearer": []
@@ -217,10 +227,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours.",
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
               "title": "Idempotency-Key"
             },
-            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours."
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours."
           }
         ],
         "requestBody": {
@@ -228,7 +238,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_create_batch_valuations_batch_post"
+                "$ref": "#/components/schemas/Body_create_batch_scans_batch_post"
               }
             }
           }
@@ -275,7 +285,7 @@
             }
           },
           "503": {
-            "description": "Pricing engine unavailable.",
+            "description": "Identification or pricing engine unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -297,13 +307,13 @@
         }
       }
     },
-    "/valuations/batch/{job_id}": {
+    "/scans/batch/{job_id}": {
       "get": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
         "summary": "Batch job status",
-        "operationId": "get_batch_valuations_batch__job_id__get",
+        "operationId": "get_batch_scans_batch__job_id__get",
         "security": [
           {
             "HTTPBearer": []
@@ -378,13 +388,13 @@
         }
       }
     },
-    "/valuations/batch/{job_id}/results": {
+    "/scans/batch/{job_id}/results": {
       "get": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
         "summary": "Download batch results as CSV",
-        "operationId": "get_batch_results_valuations_batch__job_id__results_get",
+        "operationId": "get_batch_results_scans_batch__job_id__results_get",
         "security": [
           {
             "HTTPBearer": []
@@ -468,7 +478,7 @@
     "/models": {
       "get": {
         "tags": [
-          "Comps"
+          "Scan API"
         ],
         "summary": "List model versions available for pinning",
         "operationId": "list_models_models_get",
@@ -529,7 +539,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Daily valuation counts for your account",
+        "summary": "Daily scan counts for your account",
         "operationId": "get_usage_usage_get",
         "security": [
           {
@@ -626,6 +636,26 @@
   },
   "components": {
     "schemas": {
+      "Alternative": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "probability": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Probability"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "probability"
+        ],
+        "title": "Alternative"
+      },
       "BatchJobResponse": {
         "properties": {
           "object": {
@@ -761,7 +791,7 @@
         ],
         "title": "BatchJobResponse"
       },
-      "Body_create_batch_valuations_batch_post": {
+      "Body_create_batch_scans_batch_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -804,7 +834,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_create_batch_valuations_batch_post"
+        "title": "Body_create_batch_scans_batch_post"
       },
       "Breakdown": {
         "properties": {
@@ -928,6 +958,37 @@
             ],
             "title": "Adjusted Price Total",
             "description": "Engine adjustment toward the subject (pieces)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Link to the listing or sale record."
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "differences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Differences",
+            "description": "How the comparable differs from this item."
           },
           "basis_factor": {
             "type": "number",
@@ -1144,6 +1205,114 @@
         ],
         "title": "ErrorResponse"
       },
+      "IdentificationOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "photos",
+              "details",
+              "photos_and_details"
+            ],
+            "title": "Source",
+            "description": "What the identification is based on."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "identified",
+              "unidentified",
+              "processing"
+            ],
+            "title": "Status"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Null when the item was described, not photographed."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "The preliminary identification."
+          },
+          "observations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Observations",
+            "description": "What the photos show."
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/Alternative"
+            },
+            "type": "array",
+            "title": "Alternatives",
+            "description": "Other things it could be, with probability."
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions",
+            "description": "What the photos cannot settle."
+          },
+          "next_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Next Evidence",
+            "description": "The evidence or testing that would settle them."
+          },
+          "field_sources": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "stated",
+                "identified"
+              ]
+            },
+            "type": "object",
+            "title": "Field Sources",
+            "description": "For each item field used, whether you stated it or it was identified."
+          },
+          "photos": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Photos",
+            "description": "Photo metadata (sha256, media type, size, url)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "status"
+        ],
+        "title": "IdentificationOut"
+      },
       "MetalInput": {
         "properties": {
           "type": {
@@ -1288,6 +1457,58 @@
         ],
         "title": "ModelsResponse"
       },
+      "PhotoInput": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^https://"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Public https link to the photo."
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "Base64-encoded image, up to 8 MB."
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "image/jpeg",
+                  "image/png",
+                  "image/webp",
+                  "image/heic"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type",
+            "description": "Required with data."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PhotoInput",
+        "description": "A photo of the item: a public https URL, or base64 image data with its media type."
+      },
       "Price": {
         "properties": {
           "per_carat": {
@@ -1353,6 +1574,447 @@
           "message"
         ],
         "title": "Reason"
+      },
+      "ScanRequest": {
+        "properties": {
+          "item_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "loose_stone",
+                  "ring",
+                  "earrings",
+                  "necklace",
+                  "pendant",
+                  "bracelet",
+                  "brooch",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Type",
+            "description": "A loose stone or a kind of finished piece. Required without photos."
+          },
+          "stones": {
+            "items": {
+              "$ref": "#/components/schemas/StoneInput"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Stones",
+            "description": "Exactly one stone for a loose stone; any number (including none) for a piece."
+          },
+          "metal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetalInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Not allowed for a loose stone."
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand",
+            "description": "Maker or house, e.g. a jewelry maison."
+          },
+          "signed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed",
+            "description": "True if the piece bears the maker's signature or mark."
+          },
+          "era": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Era",
+            "description": "e.g. 'art deco', 'victorian', 'retro', 'contemporary'."
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "new",
+                  "excellent",
+                  "very_good",
+                  "good",
+                  "fair",
+                  "poor"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "total_weight_grams": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Weight Grams"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoInput"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Photos",
+            "description": "1-5 photos of the same item: front, side, and any stamps inside the band or on the clasp. Optional when the item's details are given in full."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Free text, stored for audit; not used for pricing."
+          },
+          "valuation_basis": {
+            "type": "string",
+            "enum": [
+              "retail_replacement",
+              "fair_market",
+              "wholesale",
+              "auction_realized"
+            ],
+            "title": "Valuation Basis",
+            "description": "The value definition the price range is expressed in."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "Pin a model version (overrides the account's pin). See GET /models."
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference",
+            "description": "Your own identifier, echoed back."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "valuation_basis"
+        ],
+        "title": "ScanRequest",
+        "examples": [
+          {
+            "photos": [
+              {
+                "url": "https://example.com/ring-front.jpg"
+              },
+              {
+                "url": "https://example.com/ring-inside-band.jpg"
+              }
+            ],
+            "valuation_basis": "retail_replacement"
+          },
+          {
+            "item_type": "ring",
+            "metal": {
+              "purity": "950",
+              "type": "platinum",
+              "weight_grams": 6.4
+            },
+            "photos": [
+              {
+                "url": "https://example.com/ring-front.jpg"
+              }
+            ],
+            "valuation_basis": "retail_replacement"
+          },
+          {
+            "item_type": "loose_stone",
+            "stones": [
+              {
+                "carat": 1.52,
+                "clarity": "VS1",
+                "color_grade": "G",
+                "growth": "natural",
+                "lab": "GIA",
+                "lab_report_number": "6481234567",
+                "shape": "round",
+                "variety": "diamond"
+              }
+            ],
+            "valuation_basis": "wholesale"
+          }
+        ]
+      },
+      "ScanResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "scan",
+            "title": "Object",
+            "default": "scan"
+          },
+          "scan_id": {
+            "type": "string",
+            "title": "Scan Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "priced",
+              "insufficient_data",
+              "unidentified",
+              "processing"
+            ],
+            "title": "Status",
+            "description": "priced | insufficient_data (fewer than 5 comps, no price) | unidentified (the item could not be identified well enough to price) | processing."
+          },
+          "product": {
+            "type": "string",
+            "const": "scan",
+            "title": "Product",
+            "default": "scan"
+          },
+          "item_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "loose_stone",
+                  "ring",
+                  "earrings",
+                  "necklace",
+                  "pendant",
+                  "bracelet",
+                  "brooch",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Type"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "model_version_source": {
+            "type": "string",
+            "enum": [
+              "request",
+              "tenant_pin",
+              "default"
+            ],
+            "title": "Model Version Source"
+          },
+          "engine_version": {
+            "type": "string",
+            "title": "Engine Version"
+          },
+          "synthetic_data": {
+            "type": "boolean",
+            "title": "Synthetic Data",
+            "description": "True when computed in the sandbox from synthetic data (not market values)."
+          },
+          "valuation_basis": {
+            "type": "string",
+            "enum": [
+              "retail_replacement",
+              "fair_market",
+              "wholesale",
+              "auction_realized"
+            ],
+            "title": "Valuation Basis"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "description": "The request as received, with photo metadata."
+          },
+          "identification": {
+            "$ref": "#/components/schemas/IdentificationOut"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item",
+            "description": "The item that was priced."
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null unless status is priced."
+          },
+          "breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Breakdown"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Raw/Make/Market split of the mid value, for pieces."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Confidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while processing."
+          },
+          "comps": {
+            "items": {
+              "$ref": "#/components/schemas/Comp"
+            },
+            "type": "array",
+            "title": "Comps"
+          },
+          "comps_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompsSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioResult"
+            },
+            "type": "array",
+            "title": "Scenarios"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "batch_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scan_id",
+          "created_at",
+          "status",
+          "model_version",
+          "model_version_source",
+          "engine_version",
+          "synthetic_data",
+          "valuation_basis",
+          "inputs",
+          "identification"
+        ],
+        "title": "ScanResponse"
       },
       "ScenarioResult": {
         "properties": {
@@ -1623,21 +2285,21 @@
             "type": "string",
             "title": "Product"
           },
-          "valuations_total": {
+          "scans_total": {
             "type": "integer",
-            "title": "Valuations Total"
+            "title": "Scans Total"
           },
-          "valuations_priced": {
+          "scans_priced": {
             "type": "integer",
-            "title": "Valuations Priced"
+            "title": "Scans Priced"
           }
         },
         "type": "object",
         "required": [
           "date",
           "product",
-          "valuations_total",
-          "valuations_priced"
+          "scans_total",
+          "scans_priced"
         ],
         "title": "UsageDay"
       },
@@ -1679,408 +2341,6 @@
           "data"
         ],
         "title": "UsageResponse"
-      },
-      "ValuationRequest": {
-        "properties": {
-          "item_type": {
-            "type": "string",
-            "enum": [
-              "loose_stone",
-              "ring",
-              "earrings",
-              "necklace",
-              "pendant",
-              "bracelet",
-              "brooch",
-              "other"
-            ],
-            "title": "Item Type",
-            "description": "A loose stone or a kind of finished piece."
-          },
-          "stones": {
-            "items": {
-              "$ref": "#/components/schemas/StoneInput"
-            },
-            "type": "array",
-            "maxItems": 50,
-            "title": "Stones",
-            "description": "Exactly one stone for a loose stone; any number (including none) for a piece."
-          },
-          "metal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MetalInput"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Not allowed for a loose stone."
-          },
-          "brand": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Brand",
-            "description": "Maker or house, e.g. a jewelry maison."
-          },
-          "signed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Signed",
-            "description": "True if the piece bears the maker's signature or mark."
-          },
-          "era": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Era",
-            "description": "e.g. 'art deco', 'victorian', 'retro', 'contemporary'."
-          },
-          "condition": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "new",
-                  "excellent",
-                  "very_good",
-                  "good",
-                  "fair",
-                  "poor"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition"
-          },
-          "total_weight_grams": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 10000.0,
-                "exclusiveMinimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Weight Grams"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Free text, stored for audit; not used for pricing."
-          },
-          "valuation_basis": {
-            "type": "string",
-            "enum": [
-              "retail_replacement",
-              "fair_market",
-              "wholesale",
-              "auction_realized"
-            ],
-            "title": "Valuation Basis",
-            "description": "The value definition the price band is expressed in."
-          },
-          "model_version": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Version",
-            "description": "Pin a model version (overrides the account's pin). See GET /models."
-          },
-          "client_reference": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Reference",
-            "description": "Your own identifier, echoed back."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "item_type",
-          "valuation_basis"
-        ],
-        "title": "ValuationRequest",
-        "examples": [
-          {
-            "condition": "excellent",
-            "item_type": "ring",
-            "metal": {
-              "purity": "950",
-              "type": "platinum",
-              "weight_grams": 6.4
-            },
-            "stones": [
-              {
-                "carat": 2.1,
-                "lab": "GIA",
-                "lab_report_number": "2235117890",
-                "origin": "Sri Lanka",
-                "role": "center",
-                "shape": "oval",
-                "variety": "blue sapphire"
-              },
-              {
-                "carat": 0.6,
-                "count": 14,
-                "growth": "natural",
-                "role": "side",
-                "shape": "round",
-                "variety": "diamond"
-              }
-            ],
-            "valuation_basis": "retail_replacement"
-          },
-          {
-            "item_type": "loose_stone",
-            "stones": [
-              {
-                "carat": 1.52,
-                "clarity": "VS1",
-                "color_grade": "G",
-                "growth": "natural",
-                "lab": "GIA",
-                "lab_report_number": "6481234567",
-                "shape": "round",
-                "variety": "diamond"
-              }
-            ],
-            "valuation_basis": "wholesale"
-          }
-        ]
-      },
-      "ValuationResponse": {
-        "properties": {
-          "object": {
-            "type": "string",
-            "const": "valuation",
-            "title": "Object",
-            "default": "valuation"
-          },
-          "valuation_id": {
-            "type": "string",
-            "title": "Valuation Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "priced",
-              "insufficient_data"
-            ],
-            "title": "Status"
-          },
-          "product": {
-            "type": "string",
-            "const": "comps",
-            "title": "Product",
-            "default": "comps"
-          },
-          "item_type": {
-            "type": "string",
-            "enum": [
-              "loose_stone",
-              "ring",
-              "earrings",
-              "necklace",
-              "pendant",
-              "bracelet",
-              "brooch",
-              "other"
-            ],
-            "title": "Item Type"
-          },
-          "model_version": {
-            "type": "string",
-            "title": "Model Version"
-          },
-          "model_version_source": {
-            "type": "string",
-            "enum": [
-              "request",
-              "tenant_pin",
-              "default"
-            ],
-            "title": "Model Version Source"
-          },
-          "engine_version": {
-            "type": "string",
-            "title": "Engine Version"
-          },
-          "synthetic_data": {
-            "type": "boolean",
-            "title": "Synthetic Data",
-            "description": "True when computed from sandbox synthetic items (not market values)."
-          },
-          "valuation_basis": {
-            "type": "string",
-            "enum": [
-              "retail_replacement",
-              "fair_market",
-              "wholesale",
-              "auction_realized"
-            ],
-            "title": "Valuation Basis"
-          },
-          "currency": {
-            "type": "string",
-            "const": "USD",
-            "title": "Currency",
-            "default": "USD"
-          },
-          "client_reference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Reference"
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs",
-            "description": "The request as received (after validation)."
-          },
-          "normalized_inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Normalized Inputs",
-            "description": "What the engine was asked to value."
-          },
-          "price": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Price"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null when status is insufficient_data."
-          },
-          "breakdown": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Breakdown"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Raw/Make/Market split of the mid value, for pieces."
-          },
-          "confidence": {
-            "$ref": "#/components/schemas/Confidence"
-          },
-          "comps": {
-            "items": {
-              "$ref": "#/components/schemas/Comp"
-            },
-            "type": "array",
-            "title": "Comps"
-          },
-          "comps_summary": {
-            "$ref": "#/components/schemas/CompsSummary"
-          },
-          "scenarios": {
-            "items": {
-              "$ref": "#/components/schemas/ScenarioResult"
-            },
-            "type": "array",
-            "title": "Scenarios"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "batch_job_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Batch Job Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "valuation_id",
-          "created_at",
-          "status",
-          "item_type",
-          "model_version",
-          "model_version_source",
-          "engine_version",
-          "synthetic_data",
-          "valuation_basis",
-          "inputs",
-          "normalized_inputs",
-          "price",
-          "confidence",
-          "comps",
-          "comps_summary",
-          "scenarios",
-          "warnings"
-        ],
-        "title": "ValuationResponse"
       }
     },
     "securitySchemes": {
@@ -2099,8 +2359,8 @@
   },
   "tags": [
     {
-      "name": "Comps",
-      "description": "Valuations with comparables and confidence."
+      "name": "Scan API",
+      "description": "Identify and price jewelry and loose stones."
     },
     {
       "name": "Account",

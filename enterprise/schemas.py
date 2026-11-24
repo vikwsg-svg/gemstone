@@ -1,11 +1,14 @@
 """Request and response models for /enterprise/v1 (these generate the OpenAPI spec)."""
 
+import base64
+import binascii
 import datetime as dt
+import hashlib
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from enterprise.engine.base import ItemQuery, MetalSpec, StoneSpec
+from enterprise.engine.base import ItemQuery, MetalSpec, PhotoRef, StoneSpec
 from enterprise.valuation.vocab import (
     normalize_free,
     normalize_growth,
@@ -20,6 +23,9 @@ from enterprise.valuation.vocab import (
 
 MIN_COMPS = 5
 MAX_STONE_GROUPS = 50
+MAX_PHOTOS = 5
+MAX_PHOTO_BYTES = 8_000_000
+PHOTO_MEDIA_TYPES = ("image/jpeg", "image/png", "image/webp", "image/heic")
 
 ValuationBasis = Literal["retail_replacement", "fair_market", "wholesale", "auction_realized"]
 ItemType = Literal["loose_stone", "ring", "earrings", "necklace", "pendant", "bracelet", "brooch", "other"]
@@ -30,7 +36,10 @@ MetalType = Literal["gold", "platinum", "silver", "palladium", "other"]
 Condition = Literal["new", "excellent", "very_good", "good", "fair", "poor"]
 Lab = Literal["GIA", "IGI", "HRD", "AGL", "SSEF", "Gubelin", "GRS"]
 SourceType = Literal["realized", "asking"]
-ValuationStatus = Literal["priced", "insufficient_data"]
+ScanStatus = Literal["priced", "insufficient_data", "unidentified", "processing"]
+PricingStatus = Literal["priced", "insufficient_data"]
+ITEM_FIELDS = ("item_type", "stones", "metal", "brand", "signed", "era", "condition",
+               "total_weight_grams")
 
 
 # ── Requests ─────────────────────────────────────────────────────────────────
@@ -149,36 +158,52 @@ class MetalInput(BaseModel):
         )
 
 
-class ValuationRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {
-                    "item_type": "ring",
-                    "metal": {"type": "platinum", "purity": "950", "weight_grams": 6.4},
-                    "stones": [
-                        {"role": "center", "variety": "blue sapphire", "carat": 2.1,
-                         "shape": "oval", "origin": "Sri Lanka", "lab": "GIA",
-                         "lab_report_number": "2235117890"},
-                        {"role": "side", "variety": "diamond", "carat": 0.6, "count": 14,
-                         "shape": "round", "growth": "natural"},
-                    ],
-                    "condition": "excellent",
-                    "valuation_basis": "retail_replacement",
-                },
-                {
-                    "item_type": "loose_stone",
-                    "stones": [{"variety": "diamond", "carat": 1.52, "shape": "round",
-                                "color_grade": "G", "clarity": "VS1", "growth": "natural",
-                                "lab": "GIA", "lab_report_number": "6481234567"}],
-                    "valuation_basis": "wholesale",
-                },
-            ]
-        },
+class PhotoInput(BaseModel):
+    """A photo of the item: a public https URL, or base64 image data with its media type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: Optional[str] = Field(default=None, max_length=2048, pattern=r"^https://",
+                               description="Public https link to the photo.")
+    data: Optional[str] = Field(default=None, description="Base64-encoded image, up to 8 MB.")
+    media_type: Optional[Literal["image/jpeg", "image/png", "image/webp", "image/heic"]] = Field(
+        default=None, description="Required with data."
     )
 
-    item_type: ItemType = Field(description="A loose stone or a kind of finished piece.")
+    @model_validator(mode="after")
+    def _one_source(self) -> "PhotoInput":
+        if (self.url is None) == (self.data is None):
+            raise ValueError("a photo needs exactly one of url or data")
+        if self.data is not None:
+            if self.media_type is None:
+                raise ValueError("media_type is required with data")
+            try:
+                raw = base64.b64decode(self.data, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ValueError("data is not valid base64") from exc
+            if not raw:
+                raise ValueError("data is empty")
+            if len(raw) > MAX_PHOTO_BYTES:
+                raise ValueError(f"a photo may be at most {MAX_PHOTO_BYTES} bytes")
+        return self
+
+    def to_ref(self) -> PhotoRef:
+        if self.data is not None:
+            raw = base64.b64decode(self.data)
+            return PhotoRef(sha256=hashlib.sha256(raw).hexdigest(), media_type=self.media_type,
+                            bytes=len(raw), data=raw)
+        return PhotoRef(sha256=hashlib.sha256(self.url.encode()).hexdigest(),
+                        media_type=self.media_type, url=self.url)
+
+
+class ItemFields(BaseModel):
+    """What the item is. Required in full without photos; optional hints with photos."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_type: Optional[ItemType] = Field(
+        default=None, description="A loose stone or a kind of finished piece. Required without photos."
+    )
     stones: list[StoneInput] = Field(
         default_factory=list, max_length=MAX_STONE_GROUPS,
         description="Exactly one stone for a loose stone; any number (including none) for a piece.",
@@ -192,20 +217,18 @@ class ValuationRequest(BaseModel):
                                description="e.g. 'art deco', 'victorian', 'retro', 'contemporary'.")
     condition: Optional[Condition] = None
     total_weight_grams: Optional[float] = Field(default=None, gt=0, le=10000)
-    description: Optional[str] = Field(default=None, max_length=2000,
-                                       description="Free text, stored for audit; not used for pricing.")
-    valuation_basis: ValuationBasis = Field(
-        description="The value definition the price band is expressed in."
-    )
-    model_version: Optional[str] = Field(
-        default=None, max_length=64,
-        description="Pin a model version (overrides the account's pin). See GET /models.",
-    )
-    client_reference: Optional[str] = Field(default=None, max_length=128,
-                                            description="Your own identifier, echoed back.")
 
-    @model_validator(mode="after")
-    def _consistency(self) -> "ValuationRequest":
+    def stated(self) -> dict[str, Any]:
+        """The item fields the caller actually provided, as plain JSON."""
+        data = self.model_dump(mode="json", include=set(ITEM_FIELDS), exclude_none=True)
+        if not data.get("stones"):
+            data.pop("stones", None)
+        return data
+
+    def check_complete(self) -> None:
+        """Rules for an item that can be priced. Raises ValueError."""
+        if self.item_type is None:
+            raise ValueError("item_type is required when no photos are sent")
         centers = [s for s in self.stones if s.role == "center"]
         if len(centers) > 1:
             raise ValueError("at most one stone may have role 'center'")
@@ -218,7 +241,6 @@ class ValuationRequest(BaseModel):
                 raise ValueError("a loose_stone cannot have metal")
         elif self.metal is None and not self.stones:
             raise ValueError("a piece needs metal, stones, or both")
-        return self
 
     def to_query(self) -> ItemQuery:
         return ItemQuery(
@@ -231,6 +253,70 @@ class ValuationRequest(BaseModel):
             condition=self.condition,
             total_weight_grams=self.total_weight_grams,
         )
+
+
+class ScanRequest(ItemFields):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "photos": [{"url": "https://example.com/ring-front.jpg"},
+                               {"url": "https://example.com/ring-inside-band.jpg"}],
+                    "valuation_basis": "retail_replacement",
+                },
+                {
+                    "photos": [{"url": "https://example.com/ring-front.jpg"}],
+                    "item_type": "ring",
+                    "metal": {"type": "platinum", "purity": "950", "weight_grams": 6.4},
+                    "valuation_basis": "retail_replacement",
+                },
+                {
+                    "item_type": "loose_stone",
+                    "stones": [{"variety": "diamond", "carat": 1.52, "shape": "round",
+                                "color_grade": "G", "clarity": "VS1", "growth": "natural",
+                                "lab": "GIA", "lab_report_number": "6481234567"}],
+                    "valuation_basis": "wholesale",
+                },
+            ]
+        },
+    )
+
+    photos: list[PhotoInput] = Field(
+        default_factory=list, max_length=MAX_PHOTOS,
+        description="1-5 photos of the same item: front, side, and any stamps inside the band or "
+                    "on the clasp. Optional when the item's details are given in full.",
+    )
+    description: Optional[str] = Field(default=None, max_length=2000,
+                                       description="Free text, stored for audit; not used for pricing.")
+    valuation_basis: ValuationBasis = Field(
+        description="The value definition the price range is expressed in."
+    )
+    model_version: Optional[str] = Field(
+        default=None, max_length=64,
+        description="Pin a model version (overrides the account's pin). See GET /models.",
+    )
+    client_reference: Optional[str] = Field(default=None, max_length=128,
+                                            description="Your own identifier, echoed back.")
+
+    @model_validator(mode="after")
+    def _photos_or_details(self) -> "ScanRequest":
+        if not self.photos:
+            self.check_complete()
+        else:
+            centers = [s for s in self.stones if s.role == "center"]
+            if len(centers) > 1:
+                raise ValueError("at most one stone may have role 'center'")
+        return self
+
+    def photo_refs(self) -> list[PhotoRef]:
+        return [p.to_ref() for p in self.photos]
+
+    def public_inputs(self) -> dict[str, Any]:
+        """The request as stored and echoed: photo metadata instead of image data."""
+        data = self.model_dump(mode="json", exclude={"photos"})
+        data["photos"] = [ref.public() for ref in self.photo_refs()]
+        return data
 
 
 # ── Responses ────────────────────────────────────────────────────────────────
@@ -251,6 +337,35 @@ class PriceBand(BaseModel):
 class Price(BaseModel):
     per_carat: Optional[PriceBand] = Field(description="Loose stones only; null for pieces.")
     total: PriceBand
+
+
+class Alternative(BaseModel):
+    label: str
+    probability: float = Field(ge=0, le=1)
+
+
+class IdentificationOut(BaseModel):
+    source: Literal["photos", "details", "photos_and_details"] = Field(
+        description="What the identification is based on."
+    )
+    status: Literal["identified", "unidentified", "processing"]
+    confidence: Optional[float] = Field(
+        default=None, ge=0, le=1, description="Null when the item was described, not photographed."
+    )
+    summary: Optional[str] = Field(default=None, description="The preliminary identification.")
+    observations: list[str] = Field(default_factory=list, description="What the photos show.")
+    alternatives: list[Alternative] = Field(default_factory=list,
+                                            description="Other things it could be, with probability.")
+    open_questions: list[str] = Field(default_factory=list,
+                                      description="What the photos cannot settle.")
+    next_evidence: list[str] = Field(default_factory=list,
+                                     description="The evidence or testing that would settle them.")
+    field_sources: dict[str, Literal["stated", "identified"]] = Field(
+        default_factory=dict,
+        description="For each item field used, whether you stated it or it was identified.",
+    )
+    photos: list[dict[str, Any]] = Field(default_factory=list,
+                                         description="Photo metadata (sha256, media type, size, url).")
 
 
 class BreakdownPart(BaseModel):
@@ -292,6 +407,10 @@ class Comp(BaseModel):
     adjusted_price_total: Optional[float] = Field(
         default=None, description="Engine adjustment toward the subject (pieces)."
     )
+    url: Optional[str] = Field(default=None, description="Link to the listing or sale record.")
+    photo_url: Optional[str] = None
+    differences: list[str] = Field(default_factory=list,
+                                   description="How the comparable differs from this item.")
     basis_factor: float = Field(description="Multiplier applied to reach the requested basis.")
     basis_price_per_carat: Optional[float] = None
     basis_price_total: float = Field(
@@ -317,7 +436,7 @@ class ScenarioResult(BaseModel):
     scenario_id: str
     label: str
     assumptions: dict[str, str]
-    status: ValuationStatus
+    status: PricingStatus
     price: Optional[Price]
     comps_used: int
     confidence: Confidence
@@ -329,44 +448,48 @@ class ScenarioResult(BaseModel):
 
 
 def _check_floor(status: str, price: Optional[Price], comps_used: int) -> None:
-    if status == "insufficient_data" and price is not None:
-        raise ValueError("insufficient_data must not carry a price")
+    if status != "priced" and price is not None:
+        raise ValueError(f"{status} must not carry a price")
     if status == "priced" and (price is None or comps_used < MIN_COMPS):
         raise ValueError(f"a price requires at least {MIN_COMPS} comps")
 
 
-class ValuationResponse(BaseModel):
-    object: Literal["valuation"] = "valuation"
-    valuation_id: str
+class ScanResponse(BaseModel):
+    object: Literal["scan"] = "scan"
+    scan_id: str
     created_at: dt.datetime
-    status: ValuationStatus
-    product: Literal["comps"] = "comps"
-    item_type: ItemType
+    status: ScanStatus = Field(
+        description="priced | insufficient_data (fewer than 5 comps, no price) | unidentified "
+                    "(the item could not be identified well enough to price) | processing."
+    )
+    product: Literal["scan"] = "scan"
+    item_type: Optional[ItemType] = None
     model_version: str
     model_version_source: Literal["request", "tenant_pin", "default"]
     engine_version: str
     synthetic_data: bool = Field(
-        description="True when computed from sandbox synthetic items (not market values)."
+        description="True when computed in the sandbox from synthetic data (not market values)."
     )
     valuation_basis: ValuationBasis
     currency: Literal["USD"] = "USD"
     client_reference: Optional[str] = None
-    inputs: dict[str, Any] = Field(description="The request as received (after validation).")
-    normalized_inputs: dict[str, Any] = Field(description="What the engine was asked to value.")
-    price: Optional[Price] = Field(description="Null when status is insufficient_data.")
+    inputs: dict[str, Any] = Field(description="The request as received, with photo metadata.")
+    identification: IdentificationOut
+    item: Optional[dict[str, Any]] = Field(default=None, description="The item that was priced.")
+    price: Optional[Price] = Field(default=None, description="Null unless status is priced.")
     breakdown: Optional[Breakdown] = Field(
         default=None, description="Raw/Make/Market split of the mid value, for pieces."
     )
-    confidence: Confidence
-    comps: list[Comp]
-    comps_summary: CompsSummary
-    scenarios: list[ScenarioResult]
-    warnings: list[str]
+    confidence: Optional[Confidence] = Field(default=None, description="Null while processing.")
+    comps: list[Comp] = Field(default_factory=list)
+    comps_summary: Optional[CompsSummary] = None
+    scenarios: list[ScenarioResult] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     batch_job_id: Optional[str] = None
 
     @model_validator(mode="after")
-    def _floor(self) -> "ValuationResponse":
-        _check_floor(self.status, self.price, self.comps_summary.used)
+    def _floor(self) -> "ScanResponse":
+        _check_floor(self.status, self.price, self.comps_summary.used if self.comps_summary else 0)
         if self.breakdown is not None and self.price is None:
             raise ValueError("a breakdown requires a price")
         return self
@@ -393,8 +516,8 @@ class BatchJobResponse(BaseModel):
 class UsageDay(BaseModel):
     date: dt.date
     product: str
-    valuations_total: int
-    valuations_priced: int
+    scans_total: int
+    scans_priced: int
 
 
 class UsageResponse(BaseModel):
