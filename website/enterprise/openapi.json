@@ -1,0 +1,1723 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GemstoneAI Enterprise API",
+    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for colored gemstones.\n\n**Comps** (this version) returns a defensible value for a stone with the evidence attached:\na price band in your chosen valuation basis, the comparables behind it (each tagged as a\nrealized sale or an asking price), a confidence score with reason codes, and scenario pricing\nfor unknown treatment or origin.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys run against synthetic stones; responses carry `synthetic_data: true`.\n* **No guessing:** fewer than 5 qualifying comparables means no price (`insufficient_data`).\n* **Audit:** every valuation is stored and retrievable by `valuation_id`.\n* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/valuations": {
+      "post": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "Value a stone",
+        "description": "Returns a low/mid/high price band per carat and in total, in the requested valuation basis, with the comparables used, a confidence score with reason codes, and scenario pricing for unknown treatment or origin. **If fewer than 5 comparables qualify, no price is returned**: `status` is `insufficient_data` and the closest comps are listed. Every valuation is stored and retrievable by `valuation_id`.",
+        "operationId": "create_valuation_valuations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Pricing engine unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/valuations/{valuation_id}": {
+      "get": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "Retrieve a stored valuation (audit trail)",
+        "operationId": "get_valuation_valuations__valuation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "valuation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Valuation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/valuations/batch": {
+      "post": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "Submit a CSV of stones for batch valuation",
+        "description": "Upload a CSV (multipart field `file`). Required columns: `variety`, `carat`, `shape`. Optional: `row_id`, `species`, `color_grade`, `clarity`, `treatment`, `origin`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`, `valuation_basis`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
+        "operationId": "create_batch_valuations_batch_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second valuation. Keys are scoped to your account and kept for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_batch_valuations_batch_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchJobResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Pricing engine unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/valuations/batch/{job_id}": {
+      "get": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "Batch job status",
+        "operationId": "get_batch_valuations_batch__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchJobResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/valuations/batch/{job_id}/results": {
+      "get": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "Download batch results as CSV",
+        "operationId": "get_batch_results_valuations_batch__job_id__results_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Results CSV, one row per input row.",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Job not completed yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models": {
+      "get": {
+        "tags": [
+          "Comps"
+        ],
+        "summary": "List model versions available for pinning",
+        "operationId": "list_models_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/usage": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Daily valuation counts for your account",
+        "operationId": "get_usage_usage_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive. Default: 29 days before end_date.",
+              "title": "Start Date"
+            },
+            "description": "Inclusive. Default: 29 days before end_date."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive, UTC. Default: today.",
+              "title": "End Date"
+            },
+            "description": "Inclusive, UTC. Default: today."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BatchJobResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "batch_job",
+            "title": "Object",
+            "default": "batch_job"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "valuation_basis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "retail_replacement",
+                  "fair_market",
+                  "wholesale",
+                  "auction_realized"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Basis"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "processed_rows": {
+            "type": "integer",
+            "title": "Processed Rows"
+          },
+          "priced_rows": {
+            "type": "integer",
+            "title": "Priced Rows"
+          },
+          "insufficient_rows": {
+            "type": "integer",
+            "title": "Insufficient Rows"
+          },
+          "failed_rows": {
+            "type": "integer",
+            "title": "Failed Rows"
+          },
+          "results_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results Url"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "created_at",
+          "total_rows",
+          "processed_rows",
+          "priced_rows",
+          "insufficient_rows",
+          "failed_rows"
+        ],
+        "title": "BatchJobResponse"
+      },
+      "Body_create_batch_valuations_batch_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "CSV file, UTF-8."
+          },
+          "valuation_basis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "retail_replacement",
+                  "fair_market",
+                  "wholesale",
+                  "auction_realized"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Basis",
+            "description": "Default basis for rows without a valuation_basis column."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_batch_valuations_batch_post"
+      },
+      "Comp": {
+        "properties": {
+          "comp_id": {
+            "type": "string",
+            "title": "Comp Id"
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "realized",
+              "asking"
+            ],
+            "title": "Source Type",
+            "description": "'realized' = completed sale; 'asking' = list price, not a transaction."
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date",
+            "description": "Sale date (realized) or listing date (asking)."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "carat": {
+            "type": "number",
+            "title": "Carat"
+          },
+          "price_total": {
+            "type": "number",
+            "title": "Price Total"
+          },
+          "price_per_carat": {
+            "type": "number",
+            "title": "Price Per Carat"
+          },
+          "adjusted_price_per_carat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjusted Price Per Carat",
+            "description": "Engine-adjusted price per carat toward the subject stone."
+          },
+          "basis_factor": {
+            "type": "number",
+            "title": "Basis Factor",
+            "description": "Multiplier applied to reach the requested basis."
+          },
+          "basis_price_per_carat": {
+            "type": "number",
+            "title": "Basis Price Per Carat"
+          },
+          "similarity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Similarity"
+          },
+          "qualified": {
+            "type": "boolean",
+            "title": "Qualified",
+            "description": "True when the comp met the similarity threshold."
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comp_id",
+          "source_type",
+          "source",
+          "date",
+          "currency",
+          "carat",
+          "price_total",
+          "price_per_carat",
+          "basis_factor",
+          "basis_price_per_carat",
+          "similarity",
+          "qualified",
+          "attributes"
+        ],
+        "title": "Comp"
+      },
+      "CompsSummary": {
+        "properties": {
+          "considered": {
+            "type": "integer",
+            "title": "Considered"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected",
+            "description": "Comps dropped for missing source_type or invalid data."
+          },
+          "qualified": {
+            "type": "integer",
+            "title": "Qualified"
+          },
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "realized": {
+            "type": "integer",
+            "title": "Realized"
+          },
+          "asking": {
+            "type": "integer",
+            "title": "Asking"
+          },
+          "min_required": {
+            "type": "integer",
+            "title": "Min Required",
+            "default": 5
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "title": "Similarity Threshold"
+          }
+        },
+        "type": "object",
+        "required": [
+          "considered",
+          "rejected",
+          "qualified",
+          "used",
+          "realized",
+          "asking",
+          "similarity_threshold"
+        ],
+        "title": "CompsSummary"
+      },
+      "Confidence": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "none"
+            ],
+            "title": "Level"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "level",
+          "reasons"
+        ],
+        "title": "Confidence"
+      },
+      "Dimensions": {
+        "properties": {
+          "length": {
+            "type": "number",
+            "maximum": 200.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Length",
+            "description": "Length in millimetres."
+          },
+          "width": {
+            "type": "number",
+            "maximum": 200.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "description": "Width in millimetres."
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 200.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth",
+            "description": "Depth in millimetres."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "length",
+          "width"
+        ],
+        "title": "Dimensions"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse"
+      },
+      "ModelVersionInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "engine_version": {
+            "type": "string",
+            "title": "Engine Version"
+          },
+          "released": {
+            "type": "string",
+            "format": "date",
+            "title": "Released"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "current",
+              "supported",
+              "retired"
+            ],
+            "title": "Status"
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "title": "Similarity Threshold"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "engine_version",
+          "released",
+          "status",
+          "similarity_threshold",
+          "notes"
+        ],
+        "title": "ModelVersionInfo"
+      },
+      "ModelsResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list",
+            "title": "Object",
+            "default": "list"
+          },
+          "default_model_version": {
+            "type": "string",
+            "title": "Default Model Version"
+          },
+          "tenant_pinned_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Pinned Model Version"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVersionInfo"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_model_version",
+          "tenant_pinned_model_version",
+          "data"
+        ],
+        "title": "ModelsResponse"
+      },
+      "Price": {
+        "properties": {
+          "per_carat": {
+            "$ref": "#/components/schemas/PriceBand"
+          },
+          "total": {
+            "$ref": "#/components/schemas/PriceBand"
+          }
+        },
+        "type": "object",
+        "required": [
+          "per_carat",
+          "total"
+        ],
+        "title": "Price"
+      },
+      "PriceBand": {
+        "properties": {
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "mid": {
+            "type": "integer",
+            "title": "Mid"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "title": "PriceBand"
+      },
+      "Reason": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Machine-readable reason code, e.g. 'few_comps'."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "Reason"
+      },
+      "ScenarioResult": {
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "title": "Scenario Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "assumptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Assumptions"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "priced",
+              "insufficient_data"
+            ],
+            "title": "Status"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comps_used": {
+            "type": "integer",
+            "title": "Comps Used"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "label",
+          "assumptions",
+          "status",
+          "price",
+          "comps_used",
+          "confidence"
+        ],
+        "title": "ScenarioResult"
+      },
+      "UsageDay": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "valuations_total": {
+            "type": "integer",
+            "title": "Valuations Total"
+          },
+          "valuations_priced": {
+            "type": "integer",
+            "title": "Valuations Priced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "product",
+          "valuations_total",
+          "valuations_priced"
+        ],
+        "title": "UsageDay"
+      },
+      "UsageResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "usage",
+            "title": "Object",
+            "default": "usage"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "start_date",
+          "end_date",
+          "data"
+        ],
+        "title": "UsageResponse"
+      },
+      "ValuationRequest": {
+        "properties": {
+          "variety": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Variety",
+            "description": "Gem variety (e.g. 'blue sapphire', 'ruby', 'emerald', 'spinel'). Required."
+          },
+          "species": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species",
+            "description": "Mineral species (e.g. 'corundum'). Inferred from variety when omitted."
+          },
+          "carat": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Carat",
+            "description": "Weight in carats. Required."
+          },
+          "shape": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Shape",
+            "description": "Cut shape (e.g. 'oval'). Required."
+          },
+          "color_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Grade"
+          },
+          "clarity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarity"
+          },
+          "treatment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "heated",
+                  "oiled",
+                  "diffused",
+                  "filled",
+                  "irradiated",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Treatment",
+            "description": "Omit or send null when unknown; the response then includes scenario pricing per plausible treatment. Common synonyms ('unheated', 'no heat', 'minor oil') are accepted."
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin",
+            "description": "Geographic origin; omit when unknown."
+          },
+          "lab": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "GIA",
+                  "AGL",
+                  "SSEF",
+                  "Gubelin",
+                  "GRS"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab",
+            "description": "Issuing lab. Requires lab_report_number."
+          },
+          "lab_report_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 3,
+                "pattern": "^[A-Za-z0-9\\-/]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab Report Number"
+          },
+          "dimensions_mm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dimensions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valuation_basis": {
+            "type": "string",
+            "enum": [
+              "retail_replacement",
+              "fair_market",
+              "wholesale",
+              "auction_realized"
+            ],
+            "title": "Valuation Basis",
+            "description": "The value definition the price band is expressed in."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "Pin a model version (overrides the account's pin). See GET /models."
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference",
+            "description": "Your own identifier, echoed back."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "variety",
+          "carat",
+          "shape",
+          "valuation_basis"
+        ],
+        "title": "ValuationRequest",
+        "examples": [
+          {
+            "carat": 2.1,
+            "clarity": "eye clean",
+            "color_grade": "intense",
+            "lab": "GIA",
+            "lab_report_number": "2235117890",
+            "origin": "Sri Lanka",
+            "shape": "oval",
+            "valuation_basis": "retail_replacement",
+            "variety": "blue sapphire"
+          }
+        ]
+      },
+      "ValuationResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "valuation",
+            "title": "Object",
+            "default": "valuation"
+          },
+          "valuation_id": {
+            "type": "string",
+            "title": "Valuation Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "priced",
+              "insufficient_data"
+            ],
+            "title": "Status"
+          },
+          "product": {
+            "type": "string",
+            "const": "comps",
+            "title": "Product",
+            "default": "comps"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "model_version_source": {
+            "type": "string",
+            "enum": [
+              "request",
+              "tenant_pin",
+              "default"
+            ],
+            "title": "Model Version Source"
+          },
+          "engine_version": {
+            "type": "string",
+            "title": "Engine Version"
+          },
+          "synthetic_data": {
+            "type": "boolean",
+            "title": "Synthetic Data",
+            "description": "True when computed from sandbox synthetic stones (not market values)."
+          },
+          "valuation_basis": {
+            "type": "string",
+            "enum": [
+              "retail_replacement",
+              "fair_market",
+              "wholesale",
+              "auction_realized"
+            ],
+            "title": "Valuation Basis"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "description": "The request as received (after validation)."
+          },
+          "normalized_inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Normalized Inputs",
+            "description": "What the engine was asked to value."
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when status is insufficient_data."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "comps": {
+            "items": {
+              "$ref": "#/components/schemas/Comp"
+            },
+            "type": "array",
+            "title": "Comps"
+          },
+          "comps_summary": {
+            "$ref": "#/components/schemas/CompsSummary"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioResult"
+            },
+            "type": "array",
+            "title": "Scenarios"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "batch_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valuation_id",
+          "created_at",
+          "status",
+          "model_version",
+          "model_version_source",
+          "engine_version",
+          "synthetic_data",
+          "valuation_basis",
+          "inputs",
+          "normalized_inputs",
+          "price",
+          "confidence",
+          "comps",
+          "comps_summary",
+          "scenarios",
+          "warnings"
+        ],
+        "title": "ValuationResponse"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Enterprise API key as a bearer token.",
+        "scheme": "bearer"
+      },
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "description": "Alternative to the Authorization header.",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Comps",
+      "description": "Valuations with comparables and confidence."
+    },
+    {
+      "name": "Account",
+      "description": "Usage and account information."
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.gemstoneaiapp.com/enterprise/v1",
+      "description": "Production"
+    }
+  ]
+}

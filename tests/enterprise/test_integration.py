@@ -133,3 +133,5 @@ def test_committed_openapi_spec_is_current():
     generated = export_openapi(app, settings.public_base_url)
     committed = json.loads((REPO / "docs" / "enterprise" / "openapi.json").read_text())
     assert committed == generated
+    website_copy = json.loads((REPO / "website" / "enterprise" / "openapi.json").read_text())
+    assert website_copy == generated
