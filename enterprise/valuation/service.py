@@ -16,6 +16,7 @@ Flow for one valuation:
 8. Persist the full record (inputs, comps, model version, output) and meter it.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -71,6 +72,23 @@ def weighted_quantile(values: list[float], weights: list[float], q: float) -> fl
             v0, v1 = pairs[i - 1][0], pairs[i][0]
             return v0 + (v1 - v0) * (q - p0) / (p1 - p0)
     return pairs[-1][0]  # pragma: no cover
+
+
+def _positive(x: float) -> bool:
+    return math.isfinite(x) and x > 0
+
+
+def _usable(c: EngineComp) -> bool:
+    """A comp counts only if it is tagged realized|asking and its numbers are sane."""
+    return (
+        c.source_type in SOURCE_TYPES
+        and c.currency == SUPPORTED_CURRENCY
+        and _positive(c.price_total)
+        and _positive(c.carat)
+        and math.isfinite(c.similarity)
+        and 0.0 <= c.similarity <= 1.0
+        and (c.adjusted_price_per_carat is None or _positive(c.adjusted_price_per_carat))
+    )
 
 
 @dataclass
@@ -173,13 +191,7 @@ class ValuationService:
         valid: list[EngineComp] = []
         rejected = 0
         for c in candidates:
-            if (
-                c.source_type not in SOURCE_TYPES
-                or c.currency != SUPPORTED_CURRENCY
-                or c.price_total <= 0
-                or c.carat <= 0
-                or not 0.0 <= c.similarity <= 1.0
-            ):
+            if not _usable(c):
                 rejected += 1
                 continue
             valid.append(c)

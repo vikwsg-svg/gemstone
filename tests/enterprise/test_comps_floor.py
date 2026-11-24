@@ -65,6 +65,10 @@ def test_comps_below_similarity_threshold_do_not_count(client, tenant, live_engi
         {"source_type": "estimate"},
         {"currency": "EUR"},
         {"ppc": 0.0},
+        {"ppc": float("nan")},
+        {"similarity": float("nan")},
+        {"adjusted": -5.0},
+        {"carat": 0.0},
     ],
 )
 def test_untagged_or_invalid_comps_are_rejected_not_priced(client, tenant, live_engine, bad):
