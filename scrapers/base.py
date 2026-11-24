@@ -436,4 +436,5 @@ class BaseScraper(ABC):
             stone_type_claimed="unknown",
             compliance=compliance,
             canonical_url=self.canonicalize_url(url),
+            price_source_type=self.site_config.price_source_type,
         )

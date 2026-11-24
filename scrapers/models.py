@@ -7,7 +7,7 @@ and compliance tracking.
 
 from datetime import datetime
 from enum import IntEnum
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -163,6 +163,14 @@ class GemstoneItem(BaseModel):
     )
     has_lab_report: bool = Field(
         default=False, description="Whether a lab report is referenced"
+    )
+
+    # Comp provenance: whether a price from this listing is a realized sale or an
+    # asking (list) price. Set from the site config; required before any price from
+    # this item may be used as a valuation comp.
+    price_source_type: Optional[Literal["realized", "asking"]] = Field(
+        default=None,
+        description="'realized' (completed sale) or 'asking' (list price) for comps",
     )
 
     # Additional extracted attributes

@@ -330,6 +330,7 @@ def validate_item_task(
         "lab_name": item.lab_name,
         "lab_report_id": item.lab_report_id,
         "has_lab_report": item.has_lab_report,
+        "price_source_type": item.price_source_type,
         "image_urls": item.image_urls,
         "extracted_attributes": item.extracted_attributes,
         "validation_tier": validation_result.tier.value,

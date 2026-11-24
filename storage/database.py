@@ -94,6 +94,9 @@ class GemstoneItemModel(Base):
     lab_name = Column(String(100))
     lab_report_id = Column(String(100), index=True)
     has_lab_report = Column(Boolean, default=False, index=True)
+    # 'realized' | 'asking'; see config.allowed_sites.SiteConfig.price_source_type and
+    # storage/migrations/001_add_price_source_type.sql for existing databases.
+    price_source_type = Column(String(16), index=True)
     image_urls = Column(JSONType)
     downloaded_images = Column(JSONType)
     extracted_attributes = Column(JSONType)
