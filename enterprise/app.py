@@ -1,0 +1,125 @@
+"""
+Application factories.
+
+``create_enterprise_app`` builds the self-contained enterprise API (its own
+routes, auth, error format and OpenAPI document). ``create_app`` mounts it at
+``/enterprise/v1`` on a root app. To serve it from the main GemstoneAI
+backend instead, mount it there the same way:
+
+    backend_app.mount("/enterprise/v1", create_enterprise_app())
+
+Run locally:  uvicorn --factory enterprise.app:create_app --reload
+"""
+
+import copy
+import logging
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any, Optional
+
+from fastapi import FastAPI
+
+from enterprise import __version__
+from enterprise.db import Database
+from enterprise.deps import AppState
+from enterprise.engine.base import CompsEngine
+from enterprise.engine.remote import RemoteCompsEngine
+from enterprise.engine.sandbox import SandboxEngine
+from enterprise.errors import install_error_handlers
+from enterprise.models import utcnow
+from enterprise.routes import router
+from enterprise.settings import EnterpriseSettings, get_settings
+from enterprise.valuation.model_versions import ModelRegistry
+
+logger = logging.getLogger(__name__)
+
+API_DESCRIPTION = """
+The GemstoneAI Enterprise API: the pricing and verification layer for colored gemstones.
+
+**Comps** (this version) returns a defensible value for a stone with the evidence attached:
+a price band in your chosen valuation basis, the comparables behind it (each tagged as a
+realized sale or an asking price), a confidence score with reason codes, and scenario pricing
+for unknown treatment or origin.
+
+* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.
+* **Sandbox:** `gsk_test_` keys run against synthetic stones; responses carry `synthetic_data: true`.
+* **No guessing:** fewer than 5 qualifying comparables means no price (`insufficient_data`).
+* **Audit:** every valuation is stored and retrievable by `valuation_id`.
+* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.
+* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.
+"""
+
+_UNSET: Any = object()
+
+
+def live_engine_from_settings(settings: EnterpriseSettings) -> Optional[CompsEngine]:
+    if settings.engine_backend == "remote":
+        if not settings.engine_url:
+            raise RuntimeError(
+                "ENTERPRISE_ENGINE_URL is required when ENTERPRISE_ENGINE_BACKEND=remote"
+            )
+        return RemoteCompsEngine(
+            settings.engine_url, settings.engine_api_key, settings.engine_timeout_seconds
+        )
+    if settings.engine_backend == "sandbox":
+        logger.warning(
+            "ENTERPRISE_ENGINE_BACKEND=sandbox: live tenants will receive SYNTHETIC prices"
+        )
+        return SandboxEngine()
+    return None
+
+
+def create_enterprise_app(
+    settings: Optional[EnterpriseSettings] = None,
+    *,
+    db: Optional[Database] = None,
+    live_engine: Optional[CompsEngine] = _UNSET,
+    sandbox_engine: Optional[CompsEngine] = None,
+    registry: Optional[ModelRegistry] = None,
+    clock: Optional[Callable[[], datetime]] = None,
+) -> FastAPI:
+    settings = settings or get_settings()
+    state = AppState(
+        settings=settings,
+        db=db or Database(settings.database_url),
+        registry=registry or ModelRegistry(default_id=settings.default_model_version),
+        sandbox_engine=sandbox_engine or SandboxEngine(),
+        live_engine=live_engine_from_settings(settings) if live_engine is _UNSET else live_engine,
+        clock=clock or utcnow,
+    )
+    app = FastAPI(
+        title="GemstoneAI Enterprise API",
+        version=__version__,
+        description=API_DESCRIPTION,
+        openapi_tags=[
+            {"name": "Comps", "description": "Valuations with comparables and confidence."},
+            {"name": "Account", "description": "Usage and account information."},
+        ],
+        openapi_url="/openapi.json",
+        docs_url="/docs",
+        redoc_url=None,
+    )
+    app.state.enterprise = state
+    install_error_handlers(app)
+    app.include_router(router)
+    return app
+
+
+def create_app(settings: Optional[EnterpriseSettings] = None, **kwargs: Any) -> FastAPI:
+    enterprise_app = create_enterprise_app(settings, **kwargs)
+    root = FastAPI(title="GemstoneAI", docs_url=None, redoc_url=None, openapi_url=None)
+
+    @root.get("/healthz", include_in_schema=False)
+    def healthz() -> dict:
+        return {"status": "ok"}
+
+    root.mount("/enterprise/v1", enterprise_app)
+    root.state.enterprise_app = enterprise_app
+    return root
+
+
+def export_openapi(enterprise_app: FastAPI, server_url: str) -> dict:
+    """The enterprise OpenAPI document with the public server URL set."""
+    spec = copy.deepcopy(enterprise_app.openapi())
+    spec["servers"] = [{"url": server_url, "description": "Production"}]
+    return spec
