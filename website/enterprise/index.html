@@ -18,7 +18,7 @@
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
     <nav aria-label="Main">
       <ul class="nav-links" id="nav-links">
-        <li><a href="comps.html">Comps</a></li>
+        <li><a href="scan.html">Scan API</a></li>
         <li><a href="intake.html">Intake</a></li>
         <li><a href="estimate.html">Estimate</a></li>
         <li><a href="verify.html">Verify</a></li>
@@ -38,22 +38,28 @@
       <p class="lede">Defensible values with the evidence attached for fine jewelry, signed pieces, diamonds and gemstones, for teams that price, accept, list or insure them at volume. Delivered as infrastructure: an API, batch files and your own workflows, not another app.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
-        <a class="btn btn-secondary" href="comps.html">See how Comps works</a>
+        <a class="btn btn-secondary" href="scan.html">See how the Scan API works</a>
       </div>
       <p class="hero-note">For auction houses, luxury resale platforms, marketplaces and insurers.</p>
     </div>
-    <figure class="vcard" aria-label="Example Comps valuation of a ring">
+    <figure class="vcard" aria-label="Example Scan API result for a ring">
   <div class="vcard-head">
-    <div class="vcard-stone">Platinum sapphire and diamond ring<span>2.10&nbsp;ct Sri Lanka sapphire &middot; 0.60&nbsp;ct side diamonds &middot; platinum 950, 6.4&nbsp;g &middot; treatment not stated</span></div>
-    <div class="vcard-id">val_01M87FMN3YG6&hellip;<br>comps-2026.11.0</div>
+    <div class="vcard-stone">Scan &middot; 2 photos + metal weight<span>Policy item POLICY-88231/ITEM-2</span></div>
+    <div class="vcard-id">scn_01M87FMN3YG6&hellip;<br>scan-2026.11.0</div>
   </div>
   <div class="vcard-body">
+    <div class="ident">
+      <div class="vcard-label">Identified &middot; 86% confidence</div>
+      <p class="ident-summary">Platinum ring with an oval blue sapphire of about 2.1&nbsp;ct and diamond side stones</p>
+      <div class="ident-alts"><span>Could also be</span><span class="alt-chip">blue spinel center 8%</span><span class="alt-chip">lab-grown sapphire 6%</span></div>
+      <div class="ident-open"><span>Still open</span>Heated? Origin? A lab report would settle both.</div>
+    </div>
     <div class="band">
       <div class="vcard-label">Retail replacement &middot; total</div>
       <div class="band-values">
         <div><small>Low</small>$2,447</div>
         <div><small>Mid</small>$4,239</div>
-        <div><small>High</small>$6,581</div>
+        <div><small>High</small>$6,579</div>
       </div>
       <div class="band-track" aria-hidden="true"></div>
     </div>
@@ -69,25 +75,26 @@
     <div class="vrow">
       <div>
         <div class="vcard-label">Confidence</div>
-        <div class="confidence"><b>0.60</b><span>Medium</span></div>
-        <span class="reason">missing_treatment</span> <span class="reason">wide_band</span>
+        <div class="confidence"><b>0.45</b><span>Low</span></div>
+        <span class="reason">missing_treatment</span> <span class="reason">missing_origin</span>
       </div>
       <div>
         <div class="vcard-label">Scenarios &middot; mid</div>
-        <div class="scen"><span>If unheated</span><span>$5,970</span></div>
+        <div class="scen"><span>If unheated</span><span>$5,518</span></div>
         <div class="scen"><span>If heated</span><span>$3,204</span></div>
+        <div class="scen"><span>If Kashmir origin</span><span>$14,905</span></div>
       </div>
     </div>
     <div style="margin-top:18px">
       <div class="vcard-label">Comparables &middot; 25 used of 46 considered</div>
       <table class="comps-table">
-        <tr><td><span class="tag tag-asking">Asking</span></td><td>Platinum ring, 2.10&nbsp;ct heated sapphire, Sri Lanka<br><span class="sim">Jun 2024 &middot; similarity 0.84</span></td><td>$9,448</td></tr>
-        <tr><td><span class="tag tag-asking">Asking</span></td><td>14k gold ring, 2.27&nbsp;ct heated sapphire, Australia<br><span class="sim">Dec 2023 &middot; similarity 0.78</span></td><td>$3,082</td></tr>
-        <tr><td><span class="tag tag-realized">Realized</span></td><td>14k gold ring, 2.13&nbsp;ct sapphire, Madagascar<br><span class="sim">Jul 2025 &middot; similarity 0.75</span></td><td>$2,663</td></tr>
+        <tr><td><span class="tag tag-asking">Asking</span></td><td>Platinum ring, 2.10&nbsp;ct heated sapphire, Sri Lanka<br><span class="sim">Jun 2024 &middot; similarity 0.86</span></td><td>$9,448</td></tr>
+        <tr><td><span class="tag tag-asking">Asking</span></td><td>14k gold ring, 2.27&nbsp;ct heated sapphire, Australia<br><span class="sim">Dec 2023 &middot; similarity 0.79</span></td><td>$3,082</td></tr>
+        <tr><td><span class="tag tag-realized">Realized</span></td><td>14k gold ring, 2.13&nbsp;ct diffused sapphire, Madagascar<br><span class="sim">Jul 2025 &middot; similarity 0.76</span></td><td>$2,663</td></tr>
       </table>
     </div>
   </div>
-  <figcaption class="vcard-foot"><span>Sandbox example: synthetic items, not market values.</span><span>Prices shown in the requested basis.</span></figcaption>
+  <figcaption class="vcard-foot"><span>Sandbox example: simulated identification and synthetic items, not market values.</span><span>Prices shown in the requested basis.</span></figcaption>
 </figure>
   </div>
 </section>
@@ -100,13 +107,13 @@
       <p>Each product is a separate line on your contract with its own success metric. All five run on the same comparables engine, so a number means the same thing everywhere.</p>
     </div>
     <div class="products">
-      <a class="product" href="comps.html"><span class="num">01</span><h3>Comps</h3><span class="pill pill-live">Pilot available</span><p>A price band, the comparables behind it and a confidence score for any piece or loose stone.</p><span class="buyer"><strong>For</strong>Insurers, appraisal platforms, marketplaces</span><span class="more">Explore Comps &rarr;</span></a>
+      <a class="product" href="scan.html"><span class="num">01</span><h3>Scan API</h3><span class="pill pill-live">Pilot available</span><p>What a piece or stone is and what it&rsquo;s worth, from photos or details, with the comparables and confidence behind it.</p><span class="buyer"><strong>For</strong>Insurers, appraisal platforms, marketplaces</span><span class="more">Explore the Scan API &rarr;</span></a>
       <a class="product" href="intake.html"><span class="num">02</span><h3>Intake</h3><span class="pill pill-early">Early access</span><p>Triages consigned jewelry into list now, specialist review or lab.</p><span class="buyer"><strong>For</strong>Luxury resale and consignment</span><span class="more">Explore Intake &rarr;</span></a>
       <a class="product" href="estimate.html"><span class="num">03</span><h3>Estimate</h3><span class="pill pill-early">Early access</span><p>Pre-sale estimates and reserves for jewelry lots, documented with realized comps.</p><span class="buyer"><strong>For</strong>Auction houses</span><span class="more">Explore Estimate &rarr;</span></a>
       <a class="product" href="verify.html"><span class="num">04</span><h3>Verify</h3><span class="pill pill-early">Early access</span><p>Flags listings and claims whose price, materials, stones or photos don&rsquo;t add up.</p><span class="buyer"><strong>For</strong>Marketplaces and insurers</span><span class="more">Explore Verify &rarr;</span></a>
       <a class="product" href="price-index.html"><span class="num">05</span><h3>Index</h3><span class="pill pill-early">Early access</span><p>Price indices for jewelry, diamonds and gemstones, as feeds and reports.</p><span class="buyer"><strong>For</strong>Strategy, finance, lenders</span><span class="more">Explore Index &rarr;</span></a>
     </div>
-    <div class="engine-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Every product calls Comps. Intake attaches an estimate band, Estimate starts from realized comps, Verify compares a listing to the band, and Index aggregates the same comparables.</span></div>
+    <div class="engine-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Every product builds on the Scan API. Intake routes each scan, Estimate starts from its realized comparables, Verify checks a listing or claim against it, and Index aggregates the same comparables.</span></div>
   </div>
 </section>
 
@@ -117,10 +124,10 @@
       <h2>Numbers your specialists, underwriters and auditors can stand behind.</h2>
     </div>
     <div class="principles">
-      <div class="principle"><span class="k">01 / no guessing</span><h3>No comps, no price</h3><p>If fewer than five comparables qualify, we return the closest comps and &ldquo;insufficient data&rdquo; instead of a number.</p></div>
+      <div class="principle"><span class="k">01 / no guessing</span><h3>No guessing</h3><p>If an item can&rsquo;t be identified well enough, or fewer than five comparables qualify, you get what we found and the next evidence to get, not a number.</p></div>
       <div class="principle"><span class="k">02 / evidence</span><h3>Realized or asking, always labeled</h3><p>Every comparable shows whether it is a completed sale or an asking price, with its date, attributes and similarity score.</p></div>
       <div class="principle"><span class="k">03 / reproducible</span><h3>Pinned model versions</h3><p>Every response is stamped with a model version. Pin one for a sale or a policy term and the method won&rsquo;t move under you.</p></div>
-      <div class="principle"><span class="k">04 / auditable</span><h3>Every valuation on file</h3><p>Each result has a valuation ID that retrieves the exact inputs, comparables, model version and output later.</p></div>
+      <div class="principle"><span class="k">04 / auditable</span><h3>Every scan on file</h3><p>Each result has a scan ID that retrieves the exact inputs, identification, comparables, model version and output later.</p></div>
     </div>
   </div>
 </section>
@@ -132,10 +139,10 @@
       <h2>Four kinds of teams, four different problems.</h2>
     </div>
     <div class="segments">
-      <div class="segment"><h3>Luxury resale</h3><p>Thousands of jewelry consignments a month, limited specialist hours, and pricing errors that leak margin.</p><p class="lead">Start with <a href="intake.html">Intake</a>, then <a href="comps.html">Comps</a></p></div>
+      <div class="segment"><h3>Luxury resale</h3><p>Thousands of jewelry consignments a month, limited specialist hours, and pricing errors that leak margin.</p><p class="lead">Start with <a href="intake.html">Intake</a>, then <a href="scan.html">the Scan API</a></p></div>
       <div class="segment"><h3>Auction houses</h3><p>Lower-value jewelry lots need faster, documented estimates, especially for online sales.</p><p class="lead">Start with <a href="estimate.html">Estimate</a>, then <a href="price-index.html">Index</a></p></div>
-      <div class="segment"><h3>Marketplaces</h3><p>Misdescribed jewelry, lab-grown sold as natural, price anomalies, chargebacks and buyer trust.</p><p class="lead">Start with <a href="verify.html">Verify</a>, then <a href="comps.html">Comps</a></p></div>
-      <div class="segment"><h3>Insurers and appraisal platforms</h3><p>Appraisal cost and delay at binding, and inflated claims at settlement.</p><p class="lead">Start with <a href="comps.html">Comps</a>, then <a href="verify.html">Verify</a></p></div>
+      <div class="segment"><h3>Marketplaces</h3><p>Misdescribed jewelry, lab-grown sold as natural, price anomalies, chargebacks and buyer trust.</p><p class="lead">Start with <a href="verify.html">Verify</a>, then <a href="scan.html">the Scan API</a></p></div>
+      <div class="segment"><h3>Insurers and appraisal platforms</h3><p>Appraisal cost and delay at binding, and inflated claims at settlement.</p><p class="lead">Start with <a href="scan.html">the Scan API</a>, then <a href="verify.html">Verify</a></p></div>
     </div>
   </div>
 </section>
@@ -148,7 +155,7 @@
       <p class="lede" style="margin-top:16px">Enterprise is separate from our consumer and dealer products at the API edge. Your valuations are isolated to your account and are never shown to other customers.</p>
     </div>
     <div class="panel">
-      <ul class="list"><li><strong>Tenant isolation.</strong> Every stored valuation, batch and usage record belongs to one account and is only retrievable with that account&rsquo;s keys.</li><li><strong>Scoped API keys.</strong> Keys are issued per product, so a Comps key cannot call anything else.</li><li><strong>No training on your data by default.</strong> Your data is not used to train shared models without a signed data-contribution agreement, which earns a price discount.</li><li><strong>Audit trail.</strong> Every valuation is stored with its inputs, comparables and model version and can be retrieved by ID.</li></ul>
+      <ul class="list"><li><strong>Tenant isolation.</strong> Every stored valuation, batch and usage record belongs to one account and is only retrievable with that account&rsquo;s keys.</li><li><strong>Scoped API keys.</strong> Keys are issued per product, so a Scan API key cannot call anything else.</li><li><strong>No training on your data by default.</strong> Your data is not used to train shared models without a signed data-contribution agreement, which earns a price discount.</li><li><strong>Audit trail.</strong> Every scan is stored with its inputs, identification, comparables and model version and can be retrieved by ID.</li></ul>
     </div>
   </div>
 </section>
@@ -191,7 +198,7 @@
       <div>
         <h4>Products</h4>
         <ul>
-          <li><a href="comps.html">Comps</a></li>
+          <li><a href="scan.html">Scan API</a></li>
           <li><a href="intake.html">Intake</a></li>
           <li><a href="estimate.html">Estimate</a></li>
           <li><a href="verify.html">Verify</a></li>

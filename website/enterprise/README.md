@@ -8,7 +8,7 @@ Fonts.
 | Page | File |
 | --- | --- |
 | Suite overview | `index.html` |
-| Comps | `comps.html` |
+| Scan API | `scan.html` |
 | Intake | `intake.html` |
 | Estimate | `estimate.html` |
 | Verify | `verify.html` |
@@ -29,7 +29,7 @@ These pages follow that: they link only to each other.
 - [ ] **Pilot form destination.** `pilot.html` opens the visitor's email app addressed to
       `enterprise@gemstoneaiapp.com`, a placeholder set in the form's `data-contact` attribute.
       Replace it with a real inbox, or point the form at your CRM or form endpoint.
-- [ ] **Product status labels.** Comps says "Pilot available"; Intake, Estimate, Verify and Index say
+- [ ] **Product status labels.** Scan API says "Pilot available"; Intake, Estimate, Verify and Index say
       "Early access". Change them only when you can deliver what they promise.
 - [ ] **API host.** The developer page and code samples use
       `https://api.gemstoneaiapp.com/enterprise/v1`, which is not deployed yet.
@@ -37,10 +37,10 @@ These pages follow that: they link only to each other.
       brand. The pages use "GemstoneAI Enterprise".
 - [ ] **Claims.** The pages deliberately contain no customer names or logos, accuracy figures,
       certifications (such as SOC 2) or prices. Add them only once confirmed: for example, Jewelers
-      Mutual as a named reference, or a measured accuracy number for Comps.
+      Mutual as a named reference, or a measured accuracy number for the Scan API.
 
-The sample valuation card on the overview and Comps pages (a platinum sapphire and diamond ring) uses
-real output from the API's sandbox, which holds synthetic items. It is labeled as such; keep that label.
+The sample scan card on the overview and Scan API pages (a platinum sapphire and diamond ring) uses
+real output from the API's sandbox, which simulates identification and holds synthetic items. It is labeled as such; keep that label.
 
 `openapi.json` must match `docs/enterprise/openapi.json`; a test fails if they drift. After API
 changes, run `python -m enterprise.cli export-openapi` and copy the file here.

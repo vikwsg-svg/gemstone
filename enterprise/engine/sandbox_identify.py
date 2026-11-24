@@ -11,6 +11,7 @@ Every response built on it carries ``synthetic_data: true``.
 
 import hashlib
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from enterprise.engine.base import Identification, IdentifyEngine, PhotoRef
@@ -132,7 +133,7 @@ class SandboxIdentifier(IdentifyEngine):
             return _UNIDENTIFIED
         stated_type = hints.get("item_type")
         if stated_type in _SAMPLES:
-            return _SAMPLES[stated_type]
+            return _answered(_SAMPLES[stated_type], hints)
         if stated_type is not None:
             return Identification(
                 status="identified",
@@ -143,4 +144,15 @@ class SandboxIdentifier(IdentifyEngine):
                 next_evidence=("State the metal, stones and maker, or add clearer photos",),
             )
         digest = hashlib.sha256("".join(sorted(p.sha256 for p in photos)).encode()).digest()
-        return _SAMPLES[_ORDER[digest[0] % len(_ORDER)]]
+        return _answered(_SAMPLES[_ORDER[digest[0] % len(_ORDER)]], hints)
+
+
+def _answered(ident: Identification, hints: Mapping[str, Any]) -> Identification:
+    """Drop open questions and evidence requests that the stated details already answer."""
+    if not (hints.get("metal") or {}).get("weight_grams"):
+        return ident
+    return replace(
+        ident,
+        open_questions=tuple(q for q in ident.open_questions if "weigh" not in q.lower()),
+        next_evidence=tuple(e for e in ident.next_evidence if not e.lower().startswith("weigh")),
+    )

@@ -11,17 +11,17 @@ metering). Each product is a separate SKU, so a customer can buy one without the
 
 | Product | What it does | First buyer | Status |
 | --- | --- | --- | --- |
-| **Comps** | Price band, Raw/Make/Market breakdown, the comparables behind it and a confidence score for any piece or loose stone | Insurers, appraisal platforms, marketplaces | **API v1 built** (this document) |
+| **Scan API** | The business version of a GemstoneAI scan result: identification from photos and/or details, then price range, Raw/Make/Market breakdown, comparables and confidence | Insurers, appraisal platforms, marketplaces | **API v1 built** (this document) |
 | **Intake** | Triages consigned jewelry into list now, specialist review, lab or decline | Luxury resale | Planned; scope `intake` reserved |
 | **Estimate** | Pre-sale estimates and reserves for jewelry lots with documented realized comps | Auction houses | Planned; scope `estimate` reserved |
 | **Verify** | Risk-scores listings and claims whose price, materials, stones or photos don't add up | Marketplaces, insurers | Planned; scope `verify` reserved |
 | **Index** | Licenses the GemstoneAI Price Index (GPI) and price data for jewelry, diamonds and gemstones | Auction houses, insurers, lenders | Planned; scope `index` reserved |
 
-Comps is the core: every other product calls it. This release builds Comps v1 and the minimum
-platform layer it needs.
+The Scan API is the core: every other product builds on it. This release builds Scan API v1 and
+the minimum platform layer it needs.
 
 The product spec (the GemstoneAI Enterprise Claude Doc) was updated on 2026-11-24 to reflect
-all-jewelry scope.
+all-jewelry scope and the Scan API name (formerly "Comps").
 
 ---
 
@@ -35,16 +35,18 @@ all-jewelry scope.
                     │ Idempotency-Key handling     │
                     └──────────────┬──────────────┘
                                    ▼
-                          ValuationService              enterprise rules:
-                                   │                    5-comp floor, basis, confidence,
-                                   │                    scenarios, breakdown, version pinning
+                    ScanService  (enterprise/scan.py)
+                    1. identify: photos (+ stated details) → identification
+                    2. price:    identified item → range, breakdown, comps,
+                                 confidence, scenarios (5-comp floor, basis, pinning)
               ┌────────────────────┴────────────────────┐
               ▼                                         ▼
-   RemoteCompsEngine (live tenants)          SandboxEngine (gsk_test_ keys)
-   HTTP → V2 kNN engine in the backend       deterministic synthetic jewelry and stones
+   Live tenants                                 Sandbox tenants (gsk_test_ keys)
+   RemoteIdentifyEngine → backend ID pipeline   SandboxIdentifier (simulated)
+   RemoteCompsEngine → V2 kNN comps engine      SandboxEngine (synthetic comps)
               │
               ▼
-   Postgres ent_* tables: tenants, api keys, valuations (audit), idempotency, usage, batch jobs
+   Postgres ent_* tables: tenants, api keys, scans (audit), idempotency, usage, batch jobs
 ```
 
 **Isolation from consumer and dealer surfaces.** The enterprise API is its own FastAPI application
@@ -58,12 +60,12 @@ from enterprise.app import create_enterprise_app
 backend_app.mount("/enterprise/v1", create_enterprise_app())
 ```
 
-**The engine boundary.** The enterprise layer never builds comps. It asks an engine for
-similarity-scored candidates, each tagged `realized` or `asking` (plus, for pieces, the Raw/Make/Market
-shares of the subject's value), and applies the enterprise rules on top. The production engine (V2)
-lives in the GemstoneAI backend; `enterprise/engine/remote.py` documents the one internal endpoint it
-needs (`POST /comps/search`). Until that is wired up, live tenants get `503 engine_unavailable`, never
-a silent fallback to synthetic data.
+**The engine boundary.** The enterprise layer neither identifies items nor builds comps itself. It
+calls two engines in the GemstoneAI backend: the identification pipeline (the scan's first step) and
+the V2 comps engine, and applies the enterprise rules on top. `enterprise/engine/remote.py` documents
+the internal endpoints they need (`POST /identify`, `GET /identify/{analysis_id}` and
+`POST /comps/search`). Until they are wired up, live tenants get `503 identification_unavailable` or
+`503 engine_unavailable`, never a silent fallback to simulated or synthetic data.
 
 ---
 
@@ -76,23 +78,19 @@ python -m enterprise.cli init-db                      # local SQLite only; use A
 
 python -m enterprise.cli create-tenant --name "Demo Insurer" --environment sandbox
 # {"tenant_id": "ten_01M8...", ...}
-python -m enterprise.cli create-key --tenant ten_01M8... --scopes comps
+python -m enterprise.cli create-key --tenant ten_01M8... --scopes scan
 # {"key_id": "key_...", "api_key": "gsk_test_..."}   <- shown once
 
 uvicorn --factory enterprise.app:create_app --reload
 # Interactive docs: http://localhost:8000/enterprise/v1/docs
 
-curl -s localhost:8000/enterprise/v1/valuations \
+curl -s localhost:8000/enterprise/v1/scans \
   -H "Authorization: Bearer gsk_test_..." \
   -H "Idempotency-Key: demo-1" \
   -H "Content-Type: application/json" \
-  -d '{"item_type": "ring",
-       "metal": {"type": "platinum", "purity": "950", "weight_grams": 6.4},
-       "stones": [{"role": "center", "variety": "blue sapphire", "carat": 2.1,
-                   "shape": "oval", "origin": "Sri Lanka"},
-                  {"role": "side", "variety": "diamond", "carat": 0.6, "count": 14,
-                   "growth": "natural"}],
-       "condition": "excellent",
+  -d '{"photos": [{"url": "https://photos.example.com/ring-front.jpg"},
+                  {"url": "https://photos.example.com/ring-inside-band.jpg"}],
+       "metal": {"type": "platinum", "weight_grams": 6.4},
        "valuation_basis": "retail_replacement"}'
 ```
 
@@ -101,7 +99,7 @@ Postgres database to also run the integration test on Postgres.
 
 ---
 
-## Comps v1 API contract
+## Scan API v1 contract
 
 Base URL: `https://api.gemstoneaiapp.com/enterprise/v1`. The machine-readable contract is
 [`openapi.json`](openapi.json) (regenerate with `python -m enterprise.cli export-openapi`; a test
@@ -110,12 +108,12 @@ fails if it drifts from the code).
 ### Authentication and scopes
 
 Send `Authorization: Bearer <key>` (or `X-API-Key: <key>`). Keys belong to one tenant and carry
-per-product scopes; Comps endpoints require the `comps` scope.
+per-product scopes; Scan API endpoints require the `scan` scope.
 
 | Key prefix | Tenant environment | Engine |
 | --- | --- | --- |
 | `gsk_live_` | live | Production V2 engine |
-| `gsk_test_` | sandbox | Synthetic jewelry and stones; every response has `synthetic_data: true` |
+| `gsk_test_` | sandbox | Simulated identification and synthetic comparables; every response has `synthetic_data: true` |
 
 Keys are stored as SHA-256 hashes and shown once at creation. Revoked keys and suspended tenants are
 refused (`401 invalid_api_key`, `403 tenant_inactive`).
@@ -124,26 +122,34 @@ refused (`401 invalid_api_key`, `403 tenant_inactive`).
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /valuations` | Value one piece of jewelry or loose stone |
-| `GET /valuations/{valuation_id}` | Retrieve a stored valuation exactly as returned (audit trail) |
-| `POST /valuations/batch` | Upload a CSV; starts an async job |
-| `GET /valuations/batch/{job_id}` | Job status and counts |
-| `GET /valuations/batch/{job_id}/results` | Results CSV |
+| `POST /scans` | Scan one piece of jewelry or loose stone (photos and/or details) |
+| `GET /scans/{scan_id}` | Retrieve a scan exactly as returned (audit trail), or the result of one still processing |
+| `POST /scans/batch` | Upload a CSV; starts an async job |
+| `GET /scans/batch/{job_id}` | Job status and counts |
+| `GET /scans/batch/{job_id}/results` | Results CSV |
 | `GET /models` | Model versions available for pinning, the default and your account's pin |
 | `GET /usage` | Valuations per day for your account (`start_date`, `end_date`) |
 
-### `POST /valuations` request
+### `POST /scans` request
 
-One request shape for every item. A **loose stone** has `item_type: "loose_stone"` and exactly one
-stone (with `carat` and `shape`). A **piece** has any other `item_type` and needs `metal`, `stones`,
-or both.
+Send **photos, details, or both**:
+
+- **Photos** (`photos[]`, 1-5 of the same item): each is `{"url": "https://..."}` or
+  `{"data": "<base64>", "media_type": "image/jpeg"}` (`image/png`, `image/webp` and `image/heic` too;
+  up to 8 MB each). With photos, every item field below is optional and acts as a stated fact that
+  wins over what the photos suggest. Image bytes are passed to the identify engine and never stored;
+  the scan keeps each photo's sha256, media type, size and URL.
+- **Details only:** without photos, the item must be described in full. A **loose stone** has
+  `item_type: "loose_stone"` and exactly one stone (with `carat` and `shape`). A **piece** has any
+  other `item_type` and needs `metal`, `stones`, or both.
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| `item_type` | yes | `loose_stone`, `ring`, `earrings`, `necklace`, `pendant`, `bracelet`, `brooch`, `other` |
+| `photos[]` | photos or details | 1-5 photos: front, side, and any stamps inside the band or on the clasp |
+| `item_type` | without photos | `loose_stone`, `ring`, `earrings`, `necklace`, `pendant`, `bracelet`, `brooch`, `other` |
 | `valuation_basis` | yes | `retail_replacement`, `fair_market`, `wholesale` or `auction_realized` |
-| `stones[]` | loose stone: exactly 1 | One entry per stone or group of identical stones (fields below) |
-| `metal` | pieces | `type` (`gold`, `platinum`, `silver`, `palladium`, `other`; `yellow gold` etc. accepted), `purity` (`18k`, `14k`, `950`, `925`; hallmarks such as `750` and `585` normalize), `color`, `weight_grams`. Not allowed on a loose stone. |
+| `stones[]` | without photos, loose stone: exactly 1 | One entry per stone or group of identical stones (fields below) |
+| `metal` | without photos, pieces | `type` (`gold`, `platinum`, `silver`, `palladium`, `other`; `yellow gold` etc. accepted), `purity` (`18k`, `14k`, `950`, `925`; hallmarks such as `750` and `585` normalize), `color`, `weight_grams`. Not allowed on a loose stone. |
 | `brand` | no | Maker or house |
 | `signed` | no | `true` if the piece bears the maker's signature or mark |
 | `era` | no | e.g. `art deco`, `victorian`, `retro`, `contemporary` |
@@ -172,27 +178,51 @@ Each `stones[]` entry:
 Unknown fields are rejected (`422 invalid_request`) so that typos such as `orgin` cannot silently
 widen a valuation.
 
-### `POST /valuations` response (sandbox example, trimmed)
+### `POST /scans` response (sandbox example, trimmed)
+
+Two photos of a ring plus a stated metal weight:
 
 ```jsonc
 {
-  "object": "valuation",
-  "valuation_id": "val_01M87FMN3YG6FDPT0FDG02Y8VV",
+  "object": "scan",
+  "scan_id": "scn_01M87QR44RK5WX2JFQ0D2TA9DX",
   "created_at": "2026-11-24T15:04:11Z",
-  "status": "priced",                       // or "insufficient_data"
+  "status": "priced",                       // priced | insufficient_data | unidentified | processing
+  "product": "scan",
   "item_type": "ring",
-  "model_version": "comps-2026.11.0",
+  "model_version": "scan-2026.11.0",
   "model_version_source": "default",        // "request" | "tenant_pin" | "default"
   "engine_version": "v2.4",
   "synthetic_data": true,                   // sandbox only
   "valuation_basis": "retail_replacement",
   "currency": "USD",
   "client_reference": "POLICY-88231/ITEM-2",
-  "inputs": { "item_type": "ring", "metal": { "type": "platinum", "...": "..." }, "stones": [ "..." ] },
-  "normalized_inputs": { "item_type": "ring", "stones": [ { "variety": "blue_sapphire", "role": "center", "treatment": null, "...": "..." }, "..." ] },
+  "inputs": { "photos": [ { "sha256": "3652aae6...", "url": "https://photos.example.com/ring-front.jpg", "...": "..." } ],
+              "metal": { "type": "platinum", "weight_grams": 6.4 }, "...": "..." },
+  "identification": {
+    "source": "photos_and_details",         // photos | details | photos_and_details
+    "status": "identified",
+    "confidence": 0.86,
+    "summary": "Platinum ring with an oval blue sapphire of about 2.1 ct and diamond side stones",
+    "observations": [
+      "Oval center stone, saturated medium-dark blue, about 9 x 7 mm",
+      "Fourteen small round side stones set along the shoulders",
+      "White metal; a PT950 stamp is visible inside the band"
+    ],
+    "alternatives": [
+      { "label": "Center stone is a blue spinel", "probability": 0.08 },
+      { "label": "Center stone is a lab-grown sapphire", "probability": 0.06 }
+    ],
+    "open_questions": ["Is the sapphire heated?", "Where is the sapphire from?"],
+    "next_evidence": ["A lab report for the center stone (GIA, SSEF, Gubelin, AGL or GRS) would settle treatment and origin"],
+    "field_sources": { "item_type": "stated", "metal": "stated", "stones": "identified", "condition": "identified" },
+    "photos": [ "... sha256, media_type, bytes, url ..." ]
+  },
+  "item": { "item_type": "ring", "metal": { "type": "platinum", "weight_grams": 6.4, "...": "..." },
+            "stones": [ { "variety": "blue_sapphire", "role": "center", "carat": 2.1, "treatment": null, "origin": null, "...": "..." }, "..." ] },
   "price": {
     "per_carat": null,                      // loose stones only
-    "total": { "low": 2447, "mid": 4239, "high": 6581 }
+    "total": { "low": 2447, "mid": 4239, "high": 6579 }
   },
   "breakdown": {                            // pieces only: split of the mid value
     "raw":    { "share": 0.8, "value": 3391 },
@@ -200,10 +230,12 @@ widen a valuation.
     "market": { "share": 0.0, "value": 0 }
   },
   "confidence": {
-    "score": 0.6,
-    "level": "medium",
+    "score": 0.45,
+    "level": "low",
     "reasons": [
       { "code": "missing_treatment", "message": "Treatment was not provided, so comparables include treated and untreated stones. See scenarios for each case." },
+      { "code": "missing_origin", "message": "Origin was not provided for a variety where origin moves price. See scenarios for the main origins." },
+      { "code": "no_lab_report", "message": "No lab report was provided; stone attributes are unverified." },
       { "code": "wide_band", "message": "Comparable prices are widely dispersed for this item." }
     ]
   },
@@ -214,40 +246,50 @@ widen a valuation.
       "source": "dealer:sandbox-dealer-2",
       "date": "2024-06-26",
       "currency": "USD",
-      "carat": null,
       "price_total": 9448.0,
-      "price_per_carat": null,
-      "adjusted_price_total": null,         // engine adjustment toward the subject, if any
+      "url": null, "photo_url": null,       // links to the listing or sale record, when the engine has them
+      "differences": [],                    // how the comp differs from this item
       "basis_factor": 1.0,
       "basis_price_total": 9448.0,
-      "similarity": 0.8373,
+      "similarity": 0.8553,
       "qualified": true,
-      "attributes": { "item_type": "ring", "metal_type": "platinum", "metal_purity": "950",
-                      "center_variety": "blue_sapphire", "center_carat": 2.1, "treatment": "heated",
-                      "origin": "sri_lanka", "side_carat_total": 0.71, "condition": "excellent", "...": "..." }
+      "attributes": { "item_type": "ring", "metal_type": "platinum", "center_variety": "blue_sapphire",
+                      "center_carat": 2.1, "treatment": "heated", "origin": "sri_lanka", "...": "..." }
     }
   ],
   "comps_summary": {
-    "considered": 46, "rejected": 0, "qualified": 39, "used": 25,
+    "considered": 46, "rejected": 0, "qualified": 44, "used": 25,
     "realized": 5, "asking": 20, "min_required": 5, "similarity_threshold": 0.55
   },
   "scenarios": [
-    { "scenario_id": "treatment:none", "label": "If unheated", "assumptions": { "treatment": "none" },
-      "status": "priced", "price": { "per_carat": null, "total": { "low": 2659, "mid": 5970, "high": 10525 } },
-      "comps_used": 25, "confidence": { "...": "..." } },
-    { "scenario_id": "treatment:heated", "label": "If heated", "assumptions": { "treatment": "heated" },
-      "status": "priced", "price": { "per_carat": null, "total": { "low": 2287, "mid": 3204, "high": 4481 } },
-      "comps_used": 25, "confidence": { "...": "..." } }
+    { "scenario_id": "treatment:none", "label": "If unheated", "status": "priced",
+      "price": { "per_carat": null, "total": { "low": 3486, "mid": 5518, "high": 9861 } }, "...": "..." },
+    { "scenario_id": "treatment:heated", "label": "If heated", "...": "..." },
+    { "scenario_id": "origin:kashmir", "label": "If Kashmir origin", "...": "..." }
   ],
-  "warnings": ["Sandbox: prices are computed from synthetic items and are not market values."],
+  "warnings": [
+    "Sandbox: identification is simulated; the same photos always return the same synthetic result.",
+    "Sandbox: prices are computed from synthetic items and are not market values."
+  ],
   "batch_job_id": null
 }
 ```
 
 For a loose stone, `price.per_carat` holds the per-carat band, `total` = per carat × carat, there is no
-`breakdown`, and each comp carries `carat`, `price_per_carat` and `basis_price_per_carat`.
+`breakdown`, and each comp carries `carat`, `price_per_carat` and `basis_price_per_carat`. For a scan
+from details only, `identification.source` is `details`, `confidence` is null and every field source
+is `stated`.
 
-### The 5-comp floor (hard rule)
+### Statuses
+
+| `status` | Meaning | Price |
+| --- | --- | --- |
+| `priced` | Identified and at least 5 comparables qualified | Yes |
+| `insufficient_data` | Identified, but fewer than 5 comparables qualified; the closest are listed | No |
+| `unidentified` | The item could not be identified well enough to price: the engine could not identify it, its identification confidence is below 40%, or the identified item is incomplete. `identification.next_evidence` says what would help. | No |
+| `processing` | Identification is still running (HTTP `202`). `GET /scans/{scan_id}` returns the finished result once it is ready; the scan is metered once, when it completes. | Not yet |
+
+### No guessing: the 5-comp floor and identification floor
 
 If fewer than **5** comps qualify (similarity at or above the model version's threshold, a valid
 `source_type`, USD, finite positive prices), the API returns **no price** and no breakdown:
@@ -265,7 +307,9 @@ If fewer than **5** comps qualify (similarity at or above the model version's th
 }
 ```
 
-The floor is enforced in three places: the service (`MIN_COMPS = 5`, not configurable and not part
+An item identified from photos with less than 40% confidence is not priced at all
+(`unidentified`), and one identified with less than 75% confidence carries the
+`uncertain_identification` reason code. The 5-comp floor is enforced in three places: the service (`MIN_COMPS = 5`, not configurable and not part
 of a model version), the response schema (a `priced` response with fewer than 5 comps fails
 validation before it is stored or returned), and each scenario independently. Valuations that end in
 `insufficient_data` are still stored and metered (as total, not priced), which gives the pilot
@@ -277,7 +321,7 @@ returns `insufficient_data` rather than being priced as unbranded metal and ston
 Each comp's price (or the engine's adjusted price) is multiplied by a factor that depends on its
 source type and the requested basis. The band is the similarity- and source-weighted 25th, 50th and
 75th percentile of those converted prices, per carat for loose stones and per item for pieces.
-Realized sales weigh 1.0 and asking prices 0.7 (model version `comps-2026.11.0`).
+Realized sales weigh 1.0 and asking prices 0.7 (model version `scan-2026.11.0`).
 
 | Comp source → basis | `retail_replacement` | `fair_market` | `wholesale` | `auction_realized` |
 | --- | --- | --- | --- | --- |
@@ -306,7 +350,9 @@ stone: the center stone, or the largest single stone.
 
 | Code | When | Penalty |
 | --- | --- | --- |
+| `unidentified` | Not identified well enough to price (no price) | score = 0 |
 | `insufficient_comps` | Fewer than 5 qualifying comps (no price) | score = 0 |
+| `uncertain_identification` | Identified from photos with under 75% confidence | 0.15 |
 | `few_comps` | 5–9 qualifying comps | 0.15 |
 | `missing_growth` | A diamond without natural vs lab-grown | 0.45 |
 | `missing_treatment` | A colored stone without treatment | 0.15 (0.30 for corundum and emerald) |
@@ -349,42 +395,46 @@ A batch is resolved once at submission and every row uses that version.
 
 | Version | Engine | Status |
 | --- | --- | --- |
-| `comps-2026.11.0` | `v2.4` | current |
-| `comps-2026.09.0` | `v2.3` | supported |
+| `scan-2026.11.0` | `v2.4` | current |
+| `scan-2026.09.0` | `v2.3` | supported |
 
 The engine version labels are placeholders until they are mapped to the V2 engine's real releases.
 
 ### Idempotency
 
-Send `Idempotency-Key: <unique string>` (1–255 characters) on `POST /valuations` and
-`POST /valuations/batch`. Within 24 hours, the same key and body returns the original response with
+Send `Idempotency-Key: <unique string>` (1–255 characters) on `POST /scans` and
+`POST /scans/batch`. Within 24 hours, the same key and body returns the original response with
 `Idempotent-Replayed: true`; nothing is re-computed or re-metered. The same key with a different body
 returns `422 idempotency_key_reused`. Errors are not stored, so a corrected request can reuse its key.
 Keys are scoped per tenant.
 
 ### Batch CSV
 
-`POST /valuations/batch` takes multipart form data: `file` (UTF-8 CSV, ≤ 5 MB, ≤ 5,000 rows),
+`POST /scans/batch` takes multipart form data: `file` (UTF-8 CSV, ≤ 5 MB, ≤ 5,000 rows),
 optional `valuation_basis` (default for rows without one) and optional `model_version`. One item per
-row; extra columns are ignored; the header must include `variety`, `item_type` or `metal_type`.
+row; extra columns are ignored; the header must include `photo_urls`, `variety`, `item_type` or
+`metal_type`. Columns other than `photo_urls` act as stated details, exactly as in `POST /scans`.
 
 | Group | Columns |
 | --- | --- |
-| Row | `row_id`, `item_type` (default `loose_stone`), `valuation_basis` |
+| Row | `row_id`, `photo_urls` (up to 5 https links separated by `\|`), `item_type` (default `loose_stone` when the row has no photos), `valuation_basis` |
 | Center or loose stone | `variety`, `species`, `carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, `growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm` |
 | Side stones | `side_variety` (default `diamond`), `side_carat_total`, `side_count`, `side_growth` |
 | Metal | `metal_type`, `metal_purity`, `metal_color`, `metal_weight_grams` |
 | Piece | `brand`, `signed` (`true`/`false`/`yes`/`no`), `era`, `condition` |
 
-The response is `202` with a `job_id`. Poll `GET /valuations/batch/{job_id}` until `status` is
+The response is `202` with a `job_id`. Poll `GET /scans/batch/{job_id}` until `status` is
 `completed`, then download `results_url`. Results have one row per input row:
-`row_number, row_id, item_type, status, valuation_id, currency, valuation_basis, per_carat_low,
+`row_number, row_id, status, scan_id, identified_as, identification_confidence, item_type,
+currency, valuation_basis, per_carat_low,
 per_carat_mid, per_carat_high, total_low, total_mid, total_high, breakdown_raw, breakdown_make,
 breakdown_market, confidence_score, confidence_level, reason_codes, comps_used, realized_comps,
 asking_comps, model_version, synthetic_data, error`.
 
 Rows that fail validation get `status = error` with the reason; they do not fail the job. Every
-priced row is an ordinary stored valuation (retrievable by `valuation_id`, linked by `batch_job_id`).
+other row is an ordinary stored scan (retrievable by `scan_id`, linked by `batch_job_id`). A row whose
+identification is still running after the identify timeout shows `processing`; retrieve its scan
+later.
 Text cells that start with `=`, `+`, `-` or `@` are prefixed with `'` to prevent spreadsheet formula
 injection.
 
@@ -396,11 +446,11 @@ Every error has the same shape: `{"error": {"code": "...", "message": "...", "de
 | --- | --- |
 | 401 | `missing_api_key`, `invalid_api_key` |
 | 403 | `insufficient_scope`, `tenant_inactive` |
-| 404 | `valuation_not_found`, `batch_job_not_found` (also for other tenants' ids) |
+| 404 | `scan_not_found`, `batch_job_not_found` (also for other tenants' ids) |
 | 409 | `batch_not_completed`, `idempotency_conflict` |
 | 413 | `file_too_large` |
 | 422 | `invalid_request`, `unknown_model_version`, `idempotency_key_reused`, `invalid_idempotency_key`, `invalid_csv`, `too_many_rows`, `invalid_date_range` |
-| 503 | `engine_unavailable`, `model_version_unavailable` |
+| 503 | `identification_unavailable`, `engine_unavailable`, `model_version_unavailable` |
 
 ---
 
@@ -441,6 +491,10 @@ categories rather than gemstones alone.
 | `ENTERPRISE_ENGINE_BACKEND` | `none` | `none` (live → 503), `remote` (V2 engine), `sandbox` (synthetic, dev only) |
 | `ENTERPRISE_ENGINE_URL`, `ENTERPRISE_ENGINE_API_KEY` | | V2 engine endpoint and credential |
 | `ENTERPRISE_ENGINE_TIMEOUT_SECONDS` | `5.0` | |
+| `ENTERPRISE_IDENTIFY_BACKEND` | `none` | `none` (live photo scans → 503), `remote` (backend identification pipeline), `sandbox` (simulated, dev only) |
+| `ENTERPRISE_IDENTIFY_URL`, `ENTERPRISE_IDENTIFY_API_KEY` | | Identification pipeline endpoint and credential |
+| `ENTERPRISE_IDENTIFY_TIMEOUT_SECONDS` | `20.0` | Per-call timeout; also how long a batch row waits for identification |
+| `ENTERPRISE_IDENTIFY_WAIT_SECONDS`, `ENTERPRISE_IDENTIFY_POLL_INTERVAL_SECONDS` | `8.0`, `1.0` | How long `POST /scans` waits before answering `202 processing` |
 | `ENTERPRISE_DEFAULT_MODEL_VERSION` | registry `current` | Override the default model version |
 | `ENTERPRISE_IDEMPOTENCY_TTL_HOURS` | `24` | |
 | `ENTERPRISE_BATCH_MAX_ROWS`, `ENTERPRISE_BATCH_MAX_BYTES` | `5000`, `5000000` | |
@@ -453,9 +507,12 @@ Verified against SQLite and Postgres 16. Do not run against production without r
 
 ## Known limitations (v1)
 
-- No real prices until the V2 engine adapter is connected (`ENTERPRISE_ENGINE_BACKEND=remote`), and
-  the V2 engine must accept the item shape above (pieces as well as loose stones).
-- Watches, pearls-specific grading (size in mm, luster, nacre) and photo inputs are not in v1.
+- No real identification or prices until the backend adapters are connected
+  (`ENTERPRISE_IDENTIFY_BACKEND=remote`, `ENTERPRISE_ENGINE_BACKEND=remote`), and the V2 comps engine
+  must accept the item shape above (pieces as well as loose stones).
+- Photos are not retained (only their sha256, size, type and URL). Keeping the images for audit needs
+  object storage; the repo's `storage/s3.py` could serve, but retention terms are a customer decision.
+- Watches and pearl-specific grading (size in mm, luster, nacre) are not in v1.
 - USD only; the engine adapter must normalize currency.
 - Batch jobs run in-process after the response. `process_batch_job` is a plain function, ready to
   move onto the existing Celery workers; a job interrupted by a restart stays `running`.
