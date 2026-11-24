@@ -1,6 +1,7 @@
 # GemstoneAI Enterprise website
 
-Static marketing pages for the enterprise suite. No build step or framework: plain HTML, one
+Static marketing pages for the enterprise suite: the pricing and verification layer for jewelry
+(finished pieces, diamonds and gemstones). No build step or framework: plain HTML, one
 stylesheet (`assets/styles.css`) and one small script (`assets/site.js`). Fonts load from Google
 Fonts.
 
@@ -38,8 +39,8 @@ These pages follow that: they link only to each other.
       certifications (such as SOC 2) or prices. Add them only once confirmed: for example, Jewelers
       Mutual as a named reference, or a measured accuracy number for Comps.
 
-The sample valuation card on the overview and Comps pages uses real output from the API's sandbox
-(synthetic stones). It is labeled as such; keep that label.
+The sample valuation card on the overview and Comps pages (a platinum sapphire and diamond ring) uses
+real output from the API's sandbox, which holds synthetic items. It is labeled as such; keep that label.
 
 `openapi.json` must match `docs/enterprise/openapi.json`; a test fails if they drift. After API
 changes, run `python -m enterprise.cli export-openapi` and copy the file here.
