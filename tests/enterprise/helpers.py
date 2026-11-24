@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from enterprise.engine.base import CompsEngine, EngineComp, StoneQuery
+from enterprise.engine.base import CompsEngine, EngineComp, EngineResult, ItemQuery
 
 BASE = "/enterprise/v1"
 FIXED_NOW = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
@@ -48,24 +48,49 @@ def make_comp(
 
 
 class FakeEngine(CompsEngine):
-    """Returns a fixed list of comps (optionally per treatment) and records calls."""
+    """Returns a fixed list of comps (optionally per principal-stone treatment or
+    growth) plus optional breakdown shares, and records calls."""
 
     name = "fake"
     synthetic = False
 
-    def __init__(self, comps=None, by_treatment=None, supported=None):
+    def __init__(self, comps=None, by_treatment=None, by_growth=None, supported=None,
+                 breakdown_shares=None):
         self.comps = list(comps) if comps is not None else [make_comp(i) for i in range(12)]
         self.by_treatment = by_treatment or {}
+        self.by_growth = by_growth or {}
         self.supported = supported
-        self.calls: list[tuple[StoneQuery, str]] = []
+        self.breakdown_shares = breakdown_shares
+        self.calls: list[tuple[ItemQuery, str]] = []
 
     def supports(self, engine_version: str) -> bool:
         return self.supported is None or engine_version in self.supported
 
-    def find_comps(self, query: StoneQuery, *, engine_version: str, limit: int):
+    def find_comps(self, query: ItemQuery, *, engine_version: str, limit: int) -> EngineResult:
         self.calls.append((query, engine_version))
-        comps = self.by_treatment.get(query.treatment, self.comps)
-        return list(comps)[:limit]
+        principal = query.principal
+        comps = self.comps
+        if principal is not None and principal.growth in self.by_growth:
+            comps = self.by_growth[principal.growth]
+        elif principal is not None and principal.treatment in self.by_treatment:
+            comps = self.by_treatment[principal.treatment]
+        return EngineResult(comps=list(comps)[:limit], breakdown_shares=self.breakdown_shares)
+
+
+def make_piece_comp(i: int, *, price: float = 5000.0, similarity: float = 0.9,
+                    source_type: str = "asking", adjusted: Optional[float] = None) -> EngineComp:
+    return EngineComp(
+        comp_id=f"p{i:03d}",
+        source_type=source_type,
+        source="dealer:test" if source_type == "asking" else "auction:test",
+        observed_on=date(2026, 10, 1),
+        currency="USD",
+        price_total=price,
+        similarity=similarity,
+        carat=None,
+        attributes={"item_type": "ring", "metal_type": "platinum"},
+        adjusted_price_total=adjusted,
+    )
 
 
 @dataclass
@@ -79,9 +104,19 @@ class TenantKey:
         return {"Authorization": f"Bearer {self.key}"}
 
 
+STONE_KEYS = {
+    "role", "variety", "species", "carat", "count", "shape", "color_grade", "clarity",
+    "cut_grade", "treatment", "origin", "growth", "lab", "lab_report_number", "dimensions_mm",
+}
+
+
 def stone(**overrides) -> dict:
-    """A fully specified request (no scenarios triggered) unless overridden."""
-    body = {
+    """A fully specified loose-stone request (no scenarios triggered) unless overridden.
+
+    Stone-level keys (variety, carat, treatment, ...) apply to the stone; the rest
+    to the request. A value of None removes the key.
+    """
+    gem = {
         "variety": "blue sapphire",
         "carat": 2.0,
         "shape": "oval",
@@ -89,7 +124,24 @@ def stone(**overrides) -> dict:
         "origin": "Sri Lanka",
         "lab": "GIA",
         "lab_report_number": "1234567890",
-        "valuation_basis": "fair_market",
+    }
+    body = {"item_type": "loose_stone", "valuation_basis": "fair_market"}
+    for key, value in overrides.items():
+        (gem if key in STONE_KEYS else body)[key] = value
+    body = {k: v for k, v in body.items() if v is not None}
+    body["stones"] = [{k: v for k, v in gem.items() if v is not None}]
+    return body
+
+
+def piece(**overrides) -> dict:
+    """A fully specified ring with a natural diamond center unless overridden."""
+    body = {
+        "item_type": "ring",
+        "metal": {"type": "platinum", "purity": "950", "weight_grams": 6.0},
+        "stones": [{"role": "center", "variety": "diamond", "carat": 0.8, "shape": "round",
+                    "color_grade": "G", "clarity": "VS2", "growth": "natural"}],
+        "condition": "excellent",
+        "valuation_basis": "retail_replacement",
     }
     body.update(overrides)
     return {k: v for k, v in body.items() if v is not None}

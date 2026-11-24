@@ -6,9 +6,15 @@ becomes a normal persisted, metered valuation linked to the job. Rows that
 fail validation are reported in the results CSV rather than failing the job.
 
 Input columns (header row required, case-insensitive, extra columns ignored):
-    row_id, variety*, species, carat*, shape*, color_grade, clarity, treatment,
-    origin, lab, lab_report_number, length_mm, width_mm, depth_mm, valuation_basis
-(* required). ``valuation_basis`` per row overrides the job-level default.
+    row_id, item_type (default loose_stone), valuation_basis
+    center or loose stone: variety, species, carat, shape, color_grade, clarity,
+        cut_grade, treatment, origin, growth, lab, lab_report_number,
+        length_mm, width_mm, depth_mm
+    side stones: side_variety (default diamond), side_carat_total, side_count, side_growth
+    metal: metal_type, metal_purity, metal_color, metal_weight_grams
+    piece: brand, signed, era, condition
+The header must include at least one of variety, item_type or metal_type.
+``valuation_basis`` per row overrides the job-level default.
 
 The whole batch is pinned to one model version, resolved at submission.
 
@@ -34,19 +40,22 @@ from enterprise.valuation.service import ValuationService
 
 logger = logging.getLogger(__name__)
 
+_STONE_COLUMNS = (
+    "variety", "species", "carat", "shape", "color_grade", "clarity", "cut_grade", "treatment",
+    "origin", "growth", "lab", "lab_report_number",
+)
+_SIDE_COLUMNS = ("side_variety", "side_carat_total", "side_count", "side_growth")
+_METAL_COLUMNS = ("metal_type", "metal_purity", "metal_color", "metal_weight_grams")
+_PIECE_COLUMNS = ("brand", "signed", "era", "condition")
 INPUT_COLUMNS = (
-    "row_id", "variety", "species", "carat", "shape", "color_grade", "clarity", "treatment",
-    "origin", "lab", "lab_report_number", "length_mm", "width_mm", "depth_mm",
-    "valuation_basis",
+    "row_id", "item_type", *_STONE_COLUMNS, "length_mm", "width_mm", "depth_mm",
+    *_SIDE_COLUMNS, *_METAL_COLUMNS, *_PIECE_COLUMNS, "valuation_basis",
 )
-REQUIRED_COLUMNS = ("variety", "carat", "shape")
-_PASSTHROUGH = (
-    "variety", "species", "carat", "shape", "color_grade", "clarity", "treatment", "origin",
-    "lab", "lab_report_number",
-)
+IDENTIFYING_COLUMNS = ("variety", "item_type", "metal_type")
 RESULT_COLUMNS = (
-    "row_number", "row_id", "status", "valuation_id", "currency", "valuation_basis",
+    "row_number", "row_id", "item_type", "status", "valuation_id", "currency", "valuation_basis",
     "per_carat_low", "per_carat_mid", "per_carat_high", "total_low", "total_mid", "total_high",
+    "breakdown_raw", "breakdown_make", "breakdown_market",
     "confidence_score", "confidence_level", "reason_codes", "comps_used", "realized_comps",
     "asking_comps", "model_version", "synthetic_data", "error",
 )
@@ -89,13 +98,12 @@ def parse_rows(
     except StopIteration:
         raise ApiError(422, "invalid_csv", "The CSV is empty.") from None
     columns = [h.strip().lower() for h in header]
-    missing = [c for c in REQUIRED_COLUMNS if c not in columns]
-    if missing:
+    if not any(c in columns for c in IDENTIFYING_COLUMNS):
         raise ApiError(
             422,
             "invalid_csv",
-            f"The CSV is missing required columns: {', '.join(missing)}.",
-            details={"required": list(REQUIRED_COLUMNS), "accepted": list(INPUT_COLUMNS)},
+            "The CSV header must include at least one of: " + ", ".join(IDENTIFYING_COLUMNS) + ".",
+            details={"accepted": list(INPUT_COLUMNS)},
         )
 
     rows: list[BatchRow] = []
@@ -113,11 +121,7 @@ def parse_rows(
         }
         row_number = len(rows) + 1
         row_id = values.get("row_id") or None
-        payload: dict = {k: values[k] for k in _PASSTHROUGH if values.get(k)}
-        if values.get("length_mm") or values.get("width_mm") or values.get("depth_mm"):
-            payload["dimensions_mm"] = {
-                k: values[f"{k}_mm"] for k in ("length", "width", "depth") if values.get(f"{k}_mm")
-            }
+        payload = _row_payload(values)
         basis = values.get("valuation_basis") or default_basis
         if basis:
             payload["valuation_basis"] = basis
@@ -133,6 +137,39 @@ def parse_rows(
     return rows
 
 
+def _row_payload(values: dict[str, str]) -> dict:
+    """Map one CSV row onto the ValuationRequest shape."""
+    payload: dict = {"item_type": values.get("item_type") or "loose_stone"}
+    stones = []
+    stone = {k: values[k] for k in _STONE_COLUMNS if values.get(k)}
+    if stone:
+        stone["role"] = "center"
+        if values.get("length_mm") or values.get("width_mm") or values.get("depth_mm"):
+            stone["dimensions_mm"] = {
+                k: values[f"{k}_mm"] for k in ("length", "width", "depth") if values.get(f"{k}_mm")
+            }
+        stones.append(stone)
+    if values.get("side_variety") or values.get("side_carat_total"):
+        side = {"role": "side", "variety": values.get("side_variety") or "diamond",
+                "carat": values.get("side_carat_total"), "count": values.get("side_count") or 1}
+        if values.get("side_growth"):
+            side["growth"] = values["side_growth"]
+        stones.append(side)
+    if stones:
+        payload["stones"] = stones
+    if values.get("metal_type"):
+        metal = {"type": values["metal_type"]}
+        for col, key in (("metal_purity", "purity"), ("metal_color", "color"),
+                         ("metal_weight_grams", "weight_grams")):
+            if values.get(col):
+                metal[key] = values[col]
+        payload["metal"] = metal
+    for col in _PIECE_COLUMNS:
+        if values.get(col):
+            payload[col] = values[col]
+    return payload
+
+
 def _safe_cell(value: Optional[str]) -> str:
     """Neutralize spreadsheet formula injection in user-supplied text."""
     if not value:
@@ -144,6 +181,8 @@ def _result_row(row: BatchRow, body: Optional[dict], error: Optional[str]) -> di
     out = {col: "" for col in RESULT_COLUMNS}
     out["row_number"] = row.row_number
     out["row_id"] = _safe_cell(row.row_id)
+    if row.request is not None:
+        out["item_type"] = row.request.item_type
     if body is None:
         out["status"] = "error"
         out["error"] = _safe_cell(error)
@@ -165,8 +204,12 @@ def _result_row(row: BatchRow, body: Optional[dict], error: Optional[str]) -> di
     price = body.get("price")
     if price:
         for band in ("low", "mid", "high"):
-            out[f"per_carat_{band}"] = price["per_carat"][band]
+            if price.get("per_carat"):
+                out[f"per_carat_{band}"] = price["per_carat"][band]
             out[f"total_{band}"] = price["total"][band]
+    if body.get("breakdown"):
+        for part in ("raw", "make", "market"):
+            out[f"breakdown_{part}"] = body["breakdown"][part]["value"]
     return out
 
 

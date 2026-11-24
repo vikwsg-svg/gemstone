@@ -68,12 +68,9 @@ def test_full_valuation_round_trip(migrated_url):
     settings = EnterpriseSettings(_env_file=None, database_url=migrated_url)
     app = create_app(settings, db=db, live_engine=None, clock=Clock())
     request = {
-        "variety": "blue sapphire",
-        "carat": 2.1,
-        "shape": "oval",
-        "color_grade": "intense",
-        "clarity": "eye clean",
-        "origin": "Sri Lanka",
+        "item_type": "loose_stone",
+        "stones": [{"variety": "blue sapphire", "carat": 2.1, "shape": "oval",
+                    "color_grade": "intense", "clarity": "eye clean", "origin": "Sri Lanka"}],
         "valuation_basis": "retail_replacement",
     }
     with TestClient(app) as client:
@@ -117,7 +114,7 @@ def test_full_valuation_round_trip(migrated_url):
         row = s.scalars(select(Valuation)).one()
         assert row.tenant_id == tenant["tenant_id"]
         assert row.model_version == "comps-2026.11.0"
-        assert row.request_payload["variety"] == "blue sapphire"
+        assert row.request_payload["stones"][0]["variety"] == "blue sapphire"
         assert row.result["comps"] == body["comps"]
         assert row.result["price"] == body["price"]
         assert row.engine == "sandbox"

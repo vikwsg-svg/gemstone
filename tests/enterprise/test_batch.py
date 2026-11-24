@@ -97,7 +97,7 @@ def test_batch_honours_model_version_pin(client, tenant, live_engine):
 @pytest.mark.parametrize(
     "text,code",
     [
-        ("variety,shape\nruby,oval\n", "invalid_csv"),
+        ("colour,size\nred,big\n", "invalid_csv"),
         ("", "invalid_csv"),
         ("variety,carat,shape\n", "invalid_csv"),
     ],

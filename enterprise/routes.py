@@ -69,11 +69,13 @@ def _replay_headers(replayed: bool) -> dict:
     response_model=ValuationResponse,
     responses={**_ERRORS, **_ENGINE_ERRORS},
     tags=["Comps"],
-    summary="Value a stone",
+    summary="Value a piece of jewelry or a loose stone",
     description=(
-        "Returns a low/mid/high price band per carat and in total, in the requested valuation "
-        "basis, with the comparables used, a confidence score with reason codes, and scenario "
-        "pricing for unknown treatment or origin. **If fewer than 5 comparables qualify, no "
+        "Values a finished piece (ring, earrings, necklace, pendant, bracelet, brooch) or a loose "
+        "diamond or gemstone. Returns a low/mid/high price band in the requested valuation basis "
+        "(also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the "
+        "comparables used, a confidence score with reason codes, and scenario pricing for unknown "
+        "natural-vs-lab-grown, treatment or origin. **If fewer than 5 comparables qualify, no "
         "price is returned**: `status` is `insufficient_data` and the closest comps are listed. "
         "Every valuation is stored and retrievable by `valuation_id`."
     ),
@@ -172,11 +174,15 @@ def _get_job(db: Session, principal: Principal, job_id: str) -> BatchJob:
         413: {"model": ErrorResponse, "description": "File too large."},
     },
     tags=["Comps"],
-    summary="Submit a CSV of stones for batch valuation",
+    summary="Submit a CSV of pieces and stones for batch valuation",
     description=(
-        "Upload a CSV (multipart field `file`). Required columns: `variety`, `carat`, `shape`. "
-        "Optional: `row_id`, `species`, `color_grade`, `clarity`, `treatment`, `origin`, `lab`, "
-        "`lab_report_number`, `length_mm`, `width_mm`, `depth_mm`, `valuation_basis`. "
+        "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `item_type` "
+        "(default `loose_stone`), `valuation_basis`; center or loose stone: `variety`, `species`, "
+        "`carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, "
+        "`growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: "
+        "`side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, "
+        "`metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, "
+        "`condition`. The header must include `variety`, `item_type` or `metal_type`. "
         "The job runs asynchronously; poll the status endpoint, then download the results CSV. "
         "The whole batch is pinned to one model version."
     ),

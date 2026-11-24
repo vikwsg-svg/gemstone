@@ -11,8 +11,8 @@
         "tags": [
           "Comps"
         ],
-        "summary": "Value a stone",
-        "description": "Returns a low/mid/high price band per carat and in total, in the requested valuation basis, with the comparables used, a confidence score with reason codes, and scenario pricing for unknown treatment or origin. **If fewer than 5 comparables qualify, no price is returned**: `status` is `insufficient_data` and the closest comps are listed. Every valuation is stored and retrievable by `valuation_id`.",
+        "summary": "Value a piece of jewelry or a loose stone",
+        "description": "Values a finished piece (ring, earrings, necklace, pendant, bracelet, brooch) or a loose diamond or gemstone. Returns a low/mid/high price band in the requested valuation basis (also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the comparables used, a confidence score with reason codes, and scenario pricing for unknown natural-vs-lab-grown, treatment or origin. **If fewer than 5 comparables qualify, no price is returned**: `status` is `insufficient_data` and the closest comps are listed. Every valuation is stored and retrievable by `valuation_id`.",
         "operationId": "create_valuation_valuations_post",
         "security": [
           {
@@ -192,8 +192,8 @@
         "tags": [
           "Comps"
         ],
-        "summary": "Submit a CSV of stones for batch valuation",
-        "description": "Upload a CSV (multipart field `file`). Required columns: `variety`, `carat`, `shape`. Optional: `row_id`, `species`, `color_grade`, `clarity`, `treatment`, `origin`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`, `valuation_basis`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
+        "summary": "Submit a CSV of pieces and stones for batch valuation",
+        "description": "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `item_type` (default `loose_stone`), `valuation_basis`; center or loose stone: `variety`, `species`, `carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, `growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: `side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, `metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, `condition`. The header must include `variety`, `item_type` or `metal_type`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
         "operationId": "create_batch_valuations_batch_post",
         "security": [
           {
@@ -806,6 +806,50 @@
         ],
         "title": "Body_create_batch_valuations_batch_post"
       },
+      "Breakdown": {
+        "properties": {
+          "raw": {
+            "$ref": "#/components/schemas/BreakdownPart",
+            "description": "Materials: metal and stones."
+          },
+          "make": {
+            "$ref": "#/components/schemas/BreakdownPart",
+            "description": "Craftsmanship and manufacture."
+          },
+          "market": {
+            "$ref": "#/components/schemas/BreakdownPart",
+            "description": "Brand, period and market premium."
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw",
+          "make",
+          "market"
+        ],
+        "title": "Breakdown"
+      },
+      "BreakdownPart": {
+        "properties": {
+          "share": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Share"
+          },
+          "value": {
+            "type": "integer",
+            "title": "Value",
+            "description": "Share of the mid total, in the requested basis."
+          }
+        },
+        "type": "object",
+        "required": [
+          "share",
+          "value"
+        ],
+        "title": "BreakdownPart"
+      },
       "Comp": {
         "properties": {
           "comp_id": {
@@ -836,7 +880,14 @@
             "title": "Currency"
           },
           "carat": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Carat"
           },
           "price_total": {
@@ -844,7 +895,14 @@
             "title": "Price Total"
           },
           "price_per_carat": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Price Per Carat"
           },
           "adjusted_price_per_carat": {
@@ -857,7 +915,19 @@
               }
             ],
             "title": "Adjusted Price Per Carat",
-            "description": "Engine-adjusted price per carat toward the subject stone."
+            "description": "Engine adjustment toward the subject (loose stones)."
+          },
+          "adjusted_price_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjusted Price Total",
+            "description": "Engine adjustment toward the subject (pieces)."
           },
           "basis_factor": {
             "type": "number",
@@ -865,8 +935,20 @@
             "description": "Multiplier applied to reach the requested basis."
           },
           "basis_price_per_carat": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Basis Price Per Carat"
+          },
+          "basis_price_total": {
+            "type": "number",
+            "title": "Basis Price Total",
+            "description": "What this comp implies for the subject, in the requested basis."
           },
           "similarity": {
             "type": "number",
@@ -892,11 +974,9 @@
           "source",
           "date",
           "currency",
-          "carat",
           "price_total",
-          "price_per_carat",
           "basis_factor",
-          "basis_price_per_carat",
+          "basis_price_total",
           "similarity",
           "qualified",
           "attributes"
@@ -1064,6 +1144,67 @@
         ],
         "title": "ErrorResponse"
       },
+      "MetalInput": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "gold",
+              "platinum",
+              "silver",
+              "palladium",
+              "other"
+            ],
+            "title": "Type",
+            "description": "gold, platinum, silver, palladium or other."
+          },
+          "purity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purity",
+            "description": "e.g. '18k', '14k', '750', '950', '925'."
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color",
+            "description": "e.g. yellow, white, rose."
+          },
+          "weight_grams": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Grams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "MetalInput"
+      },
       "ModelVersionInfo": {
         "properties": {
           "id": {
@@ -1150,7 +1291,15 @@
       "Price": {
         "properties": {
           "per_carat": {
-            "$ref": "#/components/schemas/PriceBand"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceBand"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Loose stones only; null for pieces."
           },
           "total": {
             "$ref": "#/components/schemas/PriceBand"
@@ -1260,6 +1409,209 @@
         ],
         "title": "ScenarioResult"
       },
+      "StoneInput": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "center",
+              "side",
+              "accent"
+            ],
+            "title": "Role",
+            "description": "center, side or accent.",
+            "default": "center"
+          },
+          "variety": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Variety",
+            "description": "e.g. 'diamond', 'blue sapphire', 'ruby', 'emerald', 'spinel', 'pearl'."
+          },
+          "species": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species",
+            "description": "Inferred from variety when omitted."
+          },
+          "carat": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Carat",
+            "description": "Weight of the stone, or total weight of the group if count > 1."
+          },
+          "count": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "default": 1
+          },
+          "shape": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape",
+            "description": "Cut shape, e.g. 'round', 'oval'. Required for a loose stone."
+          },
+          "color_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Grade",
+            "description": "e.g. 'G' for diamonds, 'vivid' for colored stones."
+          },
+          "clarity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarity",
+            "description": "e.g. 'VS1', 'eye clean'."
+          },
+          "cut_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cut Grade"
+          },
+          "treatment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "heated",
+                  "oiled",
+                  "diffused",
+                  "filled",
+                  "irradiated",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Treatment",
+            "description": "Omit when unknown; colored stones then get scenario pricing per treatment. Synonyms accepted ('unheated', 'no heat', 'minor oil')."
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin",
+            "description": "Omit when unknown."
+          },
+          "growth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "natural",
+                  "lab_grown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth",
+            "description": "'natural' or 'lab_grown'. Omit when unknown; diamonds then get both scenarios."
+          },
+          "lab": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "GIA",
+                  "IGI",
+                  "HRD",
+                  "AGL",
+                  "SSEF",
+                  "Gubelin",
+                  "GRS"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab",
+            "description": "Issuing lab. Requires lab_report_number."
+          },
+          "lab_report_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 3,
+                "pattern": "^[A-Za-z0-9\\-/]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab Report Number"
+          },
+          "dimensions_mm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dimensions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "variety",
+          "carat"
+        ],
+        "title": "StoneInput",
+        "description": "One stone, or a group of identical stones (e.g. 12 side diamonds, 0.40 ct total)."
+      },
       "UsageDay": {
         "properties": {
           "date": {
@@ -1330,14 +1682,42 @@
       },
       "ValuationRequest": {
         "properties": {
-          "variety": {
+          "item_type": {
             "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Variety",
-            "description": "Gem variety (e.g. 'blue sapphire', 'ruby', 'emerald', 'spinel'). Required."
+            "enum": [
+              "loose_stone",
+              "ring",
+              "earrings",
+              "necklace",
+              "pendant",
+              "bracelet",
+              "brooch",
+              "other"
+            ],
+            "title": "Item Type",
+            "description": "A loose stone or a kind of finished piece."
           },
-          "species": {
+          "stones": {
+            "items": {
+              "$ref": "#/components/schemas/StoneInput"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Stones",
+            "description": "Exactly one stone for a loose stone; any number (including none) for a piece."
+          },
+          "metal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetalInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Not allowed for a loose stone."
+          },
+          "brand": {
             "anyOf": [
               {
                 "type": "string",
@@ -1347,123 +1727,78 @@
                 "type": "null"
               }
             ],
-            "title": "Species",
-            "description": "Mineral species (e.g. 'corundum'). Inferred from variety when omitted."
+            "title": "Brand",
+            "description": "Maker or house, e.g. a jewelry maison."
           },
-          "carat": {
-            "type": "number",
-            "maximum": 1000.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Carat",
-            "description": "Weight in carats. Required."
-          },
-          "shape": {
-            "type": "string",
-            "maxLength": 32,
-            "minLength": 1,
-            "title": "Shape",
-            "description": "Cut shape (e.g. 'oval'). Required."
-          },
-          "color_grade": {
+          "signed": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 64
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Color Grade"
+            "title": "Signed",
+            "description": "True if the piece bears the maker's signature or mark."
           },
-          "clarity": {
+          "era": {
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 64
+                "maxLength": 32
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Clarity"
+            "title": "Era",
+            "description": "e.g. 'art deco', 'victorian', 'retro', 'contemporary'."
           },
-          "treatment": {
+          "condition": {
             "anyOf": [
               {
                 "type": "string",
                 "enum": [
-                  "none",
-                  "heated",
-                  "oiled",
-                  "diffused",
-                  "filled",
-                  "irradiated",
-                  "other"
+                  "new",
+                  "excellent",
+                  "very_good",
+                  "good",
+                  "fair",
+                  "poor"
                 ]
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Treatment",
-            "description": "Omit or send null when unknown; the response then includes scenario pricing per plausible treatment. Common synonyms ('unheated', 'no heat', 'minor oil') are accepted."
+            "title": "Condition"
           },
-          "origin": {
+          "total_weight_grams": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 64
+                "type": "number",
+                "maximum": 10000.0,
+                "exclusiveMinimum": 0.0
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Origin",
-            "description": "Geographic origin; omit when unknown."
+            "title": "Total Weight Grams"
           },
-          "lab": {
+          "description": {
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "GIA",
-                  "AGL",
-                  "SSEF",
-                  "Gubelin",
-                  "GRS"
-                ]
+                "maxLength": 2000
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Lab",
-            "description": "Issuing lab. Requires lab_report_number."
-          },
-          "lab_report_number": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32,
-                "minLength": 3,
-                "pattern": "^[A-Za-z0-9\\-/]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lab Report Number"
-          },
-          "dimensions_mm": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Dimensions"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "title": "Description",
+            "description": "Free text, stored for audit; not used for pricing."
           },
           "valuation_basis": {
             "type": "string",
@@ -1506,23 +1841,55 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "variety",
-          "carat",
-          "shape",
+          "item_type",
           "valuation_basis"
         ],
         "title": "ValuationRequest",
         "examples": [
           {
-            "carat": 2.1,
-            "clarity": "eye clean",
-            "color_grade": "intense",
-            "lab": "GIA",
-            "lab_report_number": "2235117890",
-            "origin": "Sri Lanka",
-            "shape": "oval",
-            "valuation_basis": "retail_replacement",
-            "variety": "blue sapphire"
+            "condition": "excellent",
+            "item_type": "ring",
+            "metal": {
+              "purity": "950",
+              "type": "platinum",
+              "weight_grams": 6.4
+            },
+            "stones": [
+              {
+                "carat": 2.1,
+                "lab": "GIA",
+                "lab_report_number": "2235117890",
+                "origin": "Sri Lanka",
+                "role": "center",
+                "shape": "oval",
+                "variety": "blue sapphire"
+              },
+              {
+                "carat": 0.6,
+                "count": 14,
+                "growth": "natural",
+                "role": "side",
+                "shape": "round",
+                "variety": "diamond"
+              }
+            ],
+            "valuation_basis": "retail_replacement"
+          },
+          {
+            "item_type": "loose_stone",
+            "stones": [
+              {
+                "carat": 1.52,
+                "clarity": "VS1",
+                "color_grade": "G",
+                "growth": "natural",
+                "lab": "GIA",
+                "lab_report_number": "6481234567",
+                "shape": "round",
+                "variety": "diamond"
+              }
+            ],
+            "valuation_basis": "wholesale"
           }
         ]
       },
@@ -1557,6 +1924,20 @@
             "title": "Product",
             "default": "comps"
           },
+          "item_type": {
+            "type": "string",
+            "enum": [
+              "loose_stone",
+              "ring",
+              "earrings",
+              "necklace",
+              "pendant",
+              "bracelet",
+              "brooch",
+              "other"
+            ],
+            "title": "Item Type"
+          },
           "model_version": {
             "type": "string",
             "title": "Model Version"
@@ -1577,7 +1958,7 @@
           "synthetic_data": {
             "type": "boolean",
             "title": "Synthetic Data",
-            "description": "True when computed from sandbox synthetic stones (not market values)."
+            "description": "True when computed from sandbox synthetic items (not market values)."
           },
           "valuation_basis": {
             "type": "string",
@@ -1629,6 +2010,17 @@
             ],
             "description": "Null when status is insufficient_data."
           },
+          "breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Breakdown"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Raw/Make/Market split of the mid value, for pieces."
+          },
           "confidence": {
             "$ref": "#/components/schemas/Confidence"
           },
@@ -1673,6 +2065,7 @@
           "valuation_id",
           "created_at",
           "status",
+          "item_type",
           "model_version",
           "model_version_source",
           "engine_version",

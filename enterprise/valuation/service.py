@@ -11,7 +11,9 @@ Flow for one valuation:
 5. HARD RULE: fewer than 5 qualifying comps -> status ``insufficient_data``,
    no price, comps still returned.
 6. Otherwise convert each comp to the requested valuation basis and take
-   similarity- and source-weighted quantiles as the low/mid/high band.
+   similarity- and source-weighted quantiles as the low/mid/high band:
+   per carat for a loose stone (total = per carat x carat), per item for a
+   finished piece (with the engine's Raw/Make/Market split of the mid value).
 7. Score confidence, price scenarios for unknown treatment/origin.
 8. Persist the full record (inputs, comps, model version, output) and meter it.
 """
@@ -25,11 +27,13 @@ from sqlalchemy.orm import Session
 from enterprise.auth import Principal
 from enterprise.deps import AppState
 from enterprise.engine.base import (
+    BREAKDOWN_PARTS,
     SOURCE_TYPES,
     CompsEngine,
     EngineComp,
+    EngineResult,
     EngineUnavailable,
-    StoneQuery,
+    ItemQuery,
 )
 from enterprise.errors import ApiError
 from enterprise.ids import new_id
@@ -45,7 +49,7 @@ MAX_COMPS_RETURNED_WHEN_INSUFFICIENT = 10
 SUPPORTED_CURRENCY = "USD"
 
 SYNTHETIC_WARNING = (
-    "Sandbox: prices are computed from synthetic stones and are not market values."
+    "Sandbox: prices are computed from synthetic items and are not market values."
 )
 
 
@@ -74,21 +78,26 @@ def weighted_quantile(values: list[float], weights: list[float], q: float) -> fl
     return pairs[-1][0]  # pragma: no cover
 
 
-def _positive(x: float) -> bool:
-    return math.isfinite(x) and x > 0
+def _positive(x: Optional[float]) -> bool:
+    return x is not None and math.isfinite(x) and x > 0
 
 
-def _usable(c: EngineComp) -> bool:
+def _usable(c: EngineComp, loose: bool) -> bool:
     """A comp counts only if it is tagged realized|asking and its numbers are sane."""
-    return (
+    if not (
         c.source_type in SOURCE_TYPES
         and c.currency == SUPPORTED_CURRENCY
         and _positive(c.price_total)
-        and _positive(c.carat)
         and math.isfinite(c.similarity)
         and 0.0 <= c.similarity <= 1.0
-        and (c.adjusted_price_per_carat is None or _positive(c.adjusted_price_per_carat))
-    )
+        and (c.carat is None or _positive(c.carat))
+    ):
+        return False
+    if loose:
+        return _positive(c.carat) and (
+            c.adjusted_price_per_carat is None or _positive(c.adjusted_price_per_carat)
+        )
+    return c.adjusted_price_total is None or _positive(c.adjusted_price_total)
 
 
 @dataclass
@@ -96,11 +105,20 @@ class EvaluatedComp:
     comp: EngineComp
     qualified: bool
     basis_factor: float
-    basis_price_per_carat: float
+    # What the comp implies for the subject in the requested basis:
+    # per carat for loose stones, per item for pieces.
+    value: float
     weight: float
+    loose: bool
+    subject_carat: Optional[float]
 
     def to_dict(self) -> dict:
         c = self.comp
+        ppc = c.price_per_carat
+
+        def r(x: Optional[float]) -> Optional[float]:
+            return round(x, 2) if x is not None else None
+
         return {
             "comp_id": c.comp_id,
             "source_type": c.source_type,
@@ -109,14 +127,14 @@ class EvaluatedComp:
             "currency": c.currency,
             "carat": c.carat,
             "price_total": round(c.price_total, 2),
-            "price_per_carat": round(c.price_per_carat, 2),
-            "adjusted_price_per_carat": (
-                round(c.adjusted_price_per_carat, 2)
-                if c.adjusted_price_per_carat is not None
-                else None
-            ),
+            "price_per_carat": r(ppc),
+            "adjusted_price_per_carat": r(c.adjusted_price_per_carat),
+            "adjusted_price_total": r(c.adjusted_price_total),
             "basis_factor": self.basis_factor,
-            "basis_price_per_carat": round(self.basis_price_per_carat, 2),
+            "basis_price_per_carat": r(self.value) if self.loose else None,
+            "basis_price_total": round(
+                self.value * self.subject_carat if self.loose else self.value, 2
+            ),
             "similarity": round(c.similarity, 4),
             "qualified": self.qualified,
             "attributes": dict(c.attributes),
@@ -141,6 +159,12 @@ class PricingRun:
     considered: int
     rejected: int
     qualified: int
+    breakdown_shares: Optional[dict]
+
+    def confidence_band(self, loose: bool) -> Optional[dict]:
+        if self.price is None:
+            return None
+        return self.price["per_carat"] if loose else self.price["total"]
 
 
 class ValuationService:
@@ -177,10 +201,10 @@ class ValuationService:
     # ── pricing ──────────────────────────────────────────────────────────────
 
     def _price(
-        self, engine: CompsEngine, mv: ModelVersion, query: StoneQuery, basis: str
+        self, engine: CompsEngine, mv: ModelVersion, query: ItemQuery, basis: str
     ) -> PricingRun:
         try:
-            candidates = engine.find_comps(
+            result: EngineResult = engine.find_comps(
                 query, engine_version=mv.engine_version, limit=mv.candidate_limit
             )
         except EngineUnavailable as exc:
@@ -188,25 +212,26 @@ class ValuationService:
                 503, "engine_unavailable", "The pricing engine is temporarily unavailable."
             ) from exc
 
-        valid: list[EngineComp] = []
-        rejected = 0
-        for c in candidates:
-            if not _usable(c):
-                rejected += 1
-                continue
-            valid.append(c)
+        loose = query.is_loose
+        subject_carat = query.principal.carat if loose else None
+        candidates = list(result.comps)
+        valid = [c for c in candidates if _usable(c, loose)]
+        rejected = len(candidates) - len(valid)
         valid.sort(key=lambda c: (-c.similarity, c.comp_id))
 
         evaluated = []
         for c in valid:
             factor = mv.basis_factor(c.source_type, basis)
+            raw_value = c.effective_price_per_carat if loose else c.effective_price_total
             evaluated.append(
                 EvaluatedComp(
                     comp=c,
                     qualified=c.similarity >= mv.similarity_threshold,
                     basis_factor=factor,
-                    basis_price_per_carat=c.effective_price_per_carat * factor,
+                    value=raw_value * factor,
                     weight=c.similarity * float(mv.source_weights[c.source_type]),
+                    loose=loose,
+                    subject_carat=subject_carat,
                 )
             )
         qualifying = [e for e in evaluated if e.qualified]
@@ -214,29 +239,32 @@ class ValuationService:
 
         if len(qualifying) < MIN_COMPS:
             near_misses = [e for e in evaluated if not e.qualified]
-            returned = (qualifying + near_misses)[:MAX_COMPS_RETURNED_WHEN_INSUFFICIENT]
             return PricingRun(
                 status="insufficient_data",
                 price=None,
-                returned=returned,
+                returned=(qualifying + near_misses)[:MAX_COMPS_RETURNED_WHEN_INSUFFICIENT],
                 used=qualifying,
                 considered=len(candidates),
                 rejected=rejected,
                 qualified=len(qualifying),
+                breakdown_shares=None,
             )
 
-        values = [e.basis_price_per_carat for e in used]
+        values = [e.value for e in used]
         weights = [e.weight for e in used]
         q_low, q_mid, q_high = mv.band_quantiles
-        ppc = {
+        band = {
             "low": weighted_quantile(values, weights, q_low),
             "mid": weighted_quantile(values, weights, q_mid),
             "high": weighted_quantile(values, weights, q_high),
         }
-        price = {
-            "per_carat": {k: int(round(v)) for k, v in ppc.items()},
-            "total": {k: int(round(v * query.carat)) for k, v in ppc.items()},
-        }
+        if loose:
+            price = {
+                "per_carat": {k: int(round(v)) for k, v in band.items()},
+                "total": {k: int(round(v * subject_carat)) for k, v in band.items()},
+            }
+        else:
+            price = {"per_carat": None, "total": {k: int(round(v)) for k, v in band.items()}}
         return PricingRun(
             status="priced",
             price=price,
@@ -245,16 +273,28 @@ class ValuationService:
             considered=len(candidates),
             rejected=rejected,
             qualified=len(qualifying),
+            breakdown_shares=None if loose else result.breakdown_shares,
         )
 
-    def _confidence(self, query: StoneQuery, run: PricingRun) -> dict:
+    def _confidence(self, query: ItemQuery, run: PricingRun) -> dict:
         return assess(
             query=query,
             used=[e.used_view() for e in run.used],
             qualified_count=run.qualified,
-            band_per_carat=run.price["per_carat"] if run.price else None,
+            band_mid_low_high=run.confidence_band(query.is_loose),
             today=self.state.clock().date(),
         )
+
+    @staticmethod
+    def _breakdown(run: PricingRun) -> Optional[dict]:
+        shares = run.breakdown_shares
+        if run.price is None or not shares:
+            return None
+        mid = run.price["total"]["mid"]
+        return {
+            part: {"share": round(float(shares[part]), 3), "value": int(round(mid * shares[part]))}
+            for part in BREAKDOWN_PARTS
+        }
 
     def evaluate(self, tenant: Tenant, request: ValuationRequest) -> tuple[dict, CompsEngine]:
         """Compute a valuation body (without id/timestamps). Raises ApiError."""
@@ -306,6 +346,7 @@ class ValuationService:
             "object": "valuation",
             "status": primary.status,
             "product": "comps",
+            "item_type": query.item_type,
             "model_version": mv.id,
             "model_version_source": mv_source,
             "engine_version": mv.engine_version,
@@ -316,6 +357,7 @@ class ValuationService:
             "inputs": request.model_dump(mode="json"),
             "normalized_inputs": query.to_dict(),
             "price": primary.price,
+            "breakdown": self._breakdown(primary),
             "confidence": confidence,
             "comps": [e.to_dict() for e in primary.returned],
             "comps_summary": {

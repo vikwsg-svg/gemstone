@@ -12,7 +12,7 @@ from datetime import date
 from statistics import median
 from typing import Optional
 
-from enterprise.engine.base import StoneQuery
+from enterprise.engine.base import ItemQuery, StoneSpec
 from enterprise.valuation.scenarios import is_origin_sensitive
 
 MIN_COMPS = 5  # hard floor, enforced in service.py; duplicated here for messages only
@@ -21,12 +21,18 @@ RARE_ORIGIN_BELOW = 3
 STALE_DAYS = 730
 WIDE_BAND_RATIO = 0.6
 LOW_SIMILARITY_BELOW = 0.70
+LAB_REPORT_EXPECTED_FROM_CARAT = 1.0  # for stones set in pieces
 
 PENALTIES = {
     "few_comps": 0.15,
+    "missing_growth": 0.45,  # natural vs lab-grown is often a 10x difference
     "missing_treatment": 0.15,
     "missing_origin": 0.10,
     "rare_origin": 0.15,
+    "missing_metal": 0.15,
+    "missing_metal_weight": 0.10,
+    "unsigned_brand": 0.10,
+    "missing_condition": 0.05,
     "asking_only": 0.10,
     "wide_band": 0.10,
     "stale_comps": 0.10,
@@ -43,10 +49,10 @@ TREATMENT_SENSITIVE_VARIETIES = {"emerald"}
 MISSING_TREATMENT_SENSITIVE_PENALTY = 0.30
 
 
-def _treatment_sensitive(query: StoneQuery) -> bool:
+def _treatment_sensitive(stone: StoneSpec) -> bool:
     return (
-        query.species in TREATMENT_SENSITIVE_SPECIES
-        or query.variety in TREATMENT_SENSITIVE_VARIETIES
+        stone.species in TREATMENT_SENSITIVE_SPECIES
+        or stone.variety in TREATMENT_SENSITIVE_VARIETIES
     )
 
 
@@ -68,95 +74,116 @@ def _n(count: int, noun: str = "comparable") -> str:
     return f"{count} {noun}" + ("" if count == 1 else "s")
 
 
+def _stone_reasons(query: ItemQuery, stone: StoneSpec, used: list[UsedComp]) -> list[dict]:
+    reasons = []
+    what = "The stone" if query.is_loose else "The center stone"
+    if stone.variety == "diamond":
+        if stone.growth is None:
+            reasons.append(_reason(
+                "missing_growth",
+                f"{what} is a diamond but natural vs lab-grown was not provided; the two are "
+                "priced as separate markets. See scenarios for each case.",
+            ))
+    elif stone.treatment is None:
+        reasons.append(_reason(
+            "missing_treatment",
+            "Treatment was not provided, so comparables include treated and untreated "
+            "stones. See scenarios for each case.",
+        ))
+    if stone.origin is None and is_origin_sensitive(stone.variety):
+        reasons.append(_reason(
+            "missing_origin",
+            "Origin was not provided for a variety where origin moves price. "
+            "See scenarios for the main origins.",
+        ))
+    if stone.origin is not None:
+        same_origin = sum(1 for c in used if c.origin == stone.origin)
+        if same_origin < RARE_ORIGIN_BELOW:
+            reasons.append(_reason(
+                "rare_origin",
+                f"Few comparables share the stated origin ({stone.origin}): "
+                f"{same_origin} of {len(used)}. The rest are from other origins.",
+            ))
+    lab_expected = query.is_loose or stone.carat / max(stone.count, 1) >= LAB_REPORT_EXPECTED_FROM_CARAT
+    if stone.lab is None and lab_expected:
+        reasons.append(_reason(
+            "no_lab_report", "No lab report was provided; stone attributes are unverified."
+        ))
+    return reasons
+
+
+def _piece_reasons(query: ItemQuery) -> list[dict]:
+    reasons = []
+    if query.metal is None:
+        reasons.append(_reason(
+            "missing_metal", "Metal was not provided; comparables span metals and purities."
+        ))
+    elif query.metal.weight_grams is None:
+        reasons.append(_reason(
+            "missing_metal_weight", "Metal weight was not provided; material value is estimated."
+        ))
+    if query.brand is not None and query.signed is not True:
+        reasons.append(_reason(
+            "unsigned_brand",
+            "A maker is named but a signature or maker's mark was not confirmed; "
+            "any brand premium is uncertain.",
+        ))
+    if query.condition is None:
+        reasons.append(_reason("missing_condition", "Condition was not provided."))
+    return reasons
+
+
 def assess(
     *,
-    query: StoneQuery,
+    query: ItemQuery,
     used: list[UsedComp],
     qualified_count: int,
-    band_per_carat: Optional[dict],
+    band_mid_low_high: Optional[dict],
     today: date,
 ) -> dict:
+    """``band_mid_low_high`` is the per-carat band (loose stones) or total band (pieces)."""
     reasons: list[dict] = []
+    priced = band_mid_low_high is not None
 
-    if band_per_carat is None:
-        reasons.append(
-            _reason(
-                "insufficient_comps",
-                f"Only {_n(qualified_count, 'qualifying comparable')}; at least {MIN_COMPS} "
-                "are required, so no price is returned.",
-            )
-        )
+    if not priced:
+        reasons.append(_reason(
+            "insufficient_comps",
+            f"Only {_n(qualified_count, 'qualifying comparable')}; at least {MIN_COMPS} "
+            "are required, so no price is returned.",
+        ))
     elif qualified_count < FEW_COMPS_BELOW:
-        reasons.append(
-            _reason(
-                "few_comps",
-                f"Priced on {qualified_count} qualifying comparables; "
-                f"{FEW_COMPS_BELOW} or more give a tighter estimate.",
-            )
-        )
+        reasons.append(_reason(
+            "few_comps",
+            f"Priced on {_n(qualified_count, 'qualifying comparable')}; "
+            f"{FEW_COMPS_BELOW} or more give a tighter estimate.",
+        ))
 
-    if query.treatment is None:
-        reasons.append(
-            _reason(
-                "missing_treatment",
-                "Treatment was not provided, so comparables include treated and untreated "
-                "stones. See scenarios for each case.",
-            )
-        )
-    if query.origin is None and is_origin_sensitive(query.variety):
-        reasons.append(
-            _reason(
-                "missing_origin",
-                "Origin was not provided for a variety where origin moves price. "
-                "See scenarios for the main origins.",
-            )
-        )
-    if query.origin is not None:
-        same_origin = sum(1 for c in used if c.origin == query.origin)
-        if same_origin < RARE_ORIGIN_BELOW:
-            reasons.append(
-                _reason(
-                    "rare_origin",
-                    f"Few comparables share the stated origin ({query.origin}): "
-                    f"{same_origin} of {len(used)}. The rest are from other origins.",
-                )
-            )
+    stone = query.principal
+    if stone is not None:
+        reasons.extend(_stone_reasons(query, stone, used))
+    if not query.is_loose:
+        reasons.extend(_piece_reasons(query))
+
     # Statistics over the comps only mean something when there are enough to price.
-    priced = band_per_carat is not None
-    if priced and all(c.source_type == "asking" for c in used):
-        reasons.append(
-            _reason(
-                "asking_only",
-                "All comparables are asking prices; none are realized sales.",
-            )
-        )
-    if band_per_carat is not None and band_per_carat["mid"] > 0:
-        spread = (band_per_carat["high"] - band_per_carat["low"]) / band_per_carat["mid"]
+    if priced and used and all(c.source_type == "asking" for c in used):
+        reasons.append(_reason(
+            "asking_only", "All comparables are asking prices; none are realized sales."
+        ))
+    if priced and band_mid_low_high["mid"] > 0:
+        spread = (band_mid_low_high["high"] - band_mid_low_high["low"]) / band_mid_low_high["mid"]
         if spread > WIDE_BAND_RATIO:
-            reasons.append(
-                _reason("wide_band", "Comparable prices are widely dispersed for this stone.")
-            )
+            reasons.append(_reason("wide_band", "Comparable prices are widely dispersed for this item."))
     if priced and used:
-        median_age = median((today - c.observed_on).days for c in used)
-        if median_age > STALE_DAYS:
-            reasons.append(
-                _reason("stale_comps", "The median comparable is more than 24 months old.")
-            )
-        mean_sim = sum(c.similarity for c in used) / len(used)
-        if mean_sim < LOW_SIMILARITY_BELOW:
-            reasons.append(
-                _reason("low_similarity", "Comparables are only loosely similar to this stone.")
-            )
-    if query.lab is None:
-        reasons.append(
-            _reason("no_lab_report", "No lab report was provided; attributes are unverified.")
-        )
+        if median((today - c.observed_on).days for c in used) > STALE_DAYS:
+            reasons.append(_reason("stale_comps", "The median comparable is more than 24 months old."))
+        if sum(c.similarity for c in used) / len(used) < LOW_SIMILARITY_BELOW:
+            reasons.append(_reason("low_similarity", "Comparables are only loosely similar to this item."))
 
-    if band_per_carat is None:
+    if not priced:
         return {"score": 0.0, "level": "none", "reasons": reasons}
 
     penalties = dict(PENALTIES)
-    if _treatment_sensitive(query):
+    if stone is not None and _treatment_sensitive(stone):
         penalties["missing_treatment"] = MISSING_TREATMENT_SENSITIVE_PENALTY
     score = 1.0 - sum(penalties.get(r["code"], 0.0) for r in reasons)
     score = round(max(0.05, min(1.0, score)), 2)

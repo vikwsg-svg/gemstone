@@ -8,11 +8,20 @@ from it; wiring it up means exposing (or mapping to) one internal endpoint:
     POST {ENTERPRISE_ENGINE_URL}/comps/search
     Authorization: Bearer {ENTERPRISE_ENGINE_API_KEY}
     {
-      "query": { "variety": "blue_sapphire", "species": "corundum", "carat": 2.1,
-                 "shape": "oval", "color_grade": null, "clarity": null,
-                 "treatment": "heated", "origin": null, "lab": "GIA",
-                 "lab_report_number": "...", "length_mm": null, "width_mm": null,
-                 "depth_mm": null },
+      "query": {
+        "item_type": "ring",              # or loose_stone, earrings, necklace, pendant, ...
+        "stones": [
+          { "role": "center", "variety": "diamond", "species": "diamond", "carat": 1.52,
+            "count": 1, "shape": "round", "color_grade": "g", "clarity": "vs1",
+            "cut_grade": "excellent", "treatment": null, "origin": null,
+            "growth": "natural", "lab": "GIA", "lab_report_number": "...",
+            "length_mm": null, "width_mm": null, "depth_mm": null },
+          { "role": "side", "variety": "diamond", "carat": 0.4, "count": 12, ... }
+        ],
+        "metal": { "type": "platinum", "purity": "950", "color": "white", "weight_grams": 5.8 },
+        "brand": null, "signed": null, "era": "contemporary", "condition": "excellent",
+        "total_weight_grams": null
+      },
       "engine_version": "v2.4",
       "limit": 60
     }
@@ -20,10 +29,14 @@ from it; wiring it up means exposing (or mapping to) one internal endpoint:
       "comps": [
         { "comp_id": "lst_123", "source_type": "asking",          # or "realized"
           "source": "dealer:leibish", "observed_on": "2026-08-14",
-          "currency": "USD", "price_total": 8450.0, "carat": 2.05,
-          "similarity": 0.91, "adjusted_price_per_carat": 4210.5,  # optional
-          "attributes": { "variety": "blue_sapphire", "origin": "sri_lanka", ... } }
-      ]
+          "currency": "USD", "price_total": 8450.0,
+          "carat": 1.48,                            # loose stones; optional for pieces
+          "similarity": 0.91,
+          "adjusted_price_per_carat": 4210.5,       # optional, loose stones
+          "adjusted_price_total": 8120.0,           # optional, pieces
+          "attributes": { "item_type": "ring", "metal_type": "platinum", ... } }
+      ],
+      "breakdown_shares": { "raw": 0.55, "make": 0.18, "market": 0.27 }   # optional, pieces
     }
 
 Comps without a valid ``source_type`` are rejected by the valuation service
@@ -36,7 +49,14 @@ from typing import Any, Optional
 
 import httpx
 
-from enterprise.engine.base import CompsEngine, EngineComp, EngineUnavailable, StoneQuery
+from enterprise.engine.base import (
+    BREAKDOWN_PARTS,
+    CompsEngine,
+    EngineComp,
+    EngineResult,
+    EngineUnavailable,
+    ItemQuery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +79,7 @@ class RemoteCompsEngine(CompsEngine):
             base_url=base_url, timeout=timeout, headers=headers, transport=transport
         )
 
-    def find_comps(
-        self, query: StoneQuery, *, engine_version: str, limit: int
-    ) -> list[EngineComp]:
+    def find_comps(self, query: ItemQuery, *, engine_version: str, limit: int) -> EngineResult:
         try:
             resp = self._client.post(
                 "/comps/search",
@@ -84,12 +102,30 @@ class RemoteCompsEngine(CompsEngine):
             comp = self._parse(raw)
             if comp is not None:
                 comps.append(comp)
-        return comps
+        return EngineResult(comps=comps, breakdown_shares=self._shares(payload))
+
+    @staticmethod
+    def _shares(payload: Any) -> Optional[dict[str, float]]:
+        raw = payload.get("breakdown_shares") if isinstance(payload, dict) else None
+        if not isinstance(raw, dict):
+            return None
+        try:
+            shares = {k: float(raw[k]) for k in BREAKDOWN_PARTS}
+        except (KeyError, TypeError, ValueError):
+            logger.warning("ignoring malformed breakdown_shares from engine: %r", raw)
+            return None
+        if any(v < 0 for v in shares.values()) or abs(sum(shares.values()) - 1.0) > 0.01:
+            logger.warning("ignoring breakdown_shares that do not sum to 1: %r", raw)
+            return None
+        return shares
 
     @staticmethod
     def _parse(raw: Any) -> Optional[EngineComp]:
+        def _opt(key: str) -> Optional[float]:
+            value = raw.get(key)
+            return float(value) if value is not None else None
+
         try:
-            adjusted = raw.get("adjusted_price_per_carat")
             return EngineComp(
                 comp_id=str(raw["comp_id"]),
                 source_type=str(raw.get("source_type") or ""),
@@ -97,10 +133,11 @@ class RemoteCompsEngine(CompsEngine):
                 observed_on=date.fromisoformat(str(raw["observed_on"])[:10]),
                 currency=str(raw.get("currency") or "USD"),
                 price_total=float(raw["price_total"]),
-                carat=float(raw["carat"]),
+                carat=_opt("carat"),
                 similarity=float(raw["similarity"]),
                 attributes=dict(raw.get("attributes") or {}),
-                adjusted_price_per_carat=float(adjusted) if adjusted is not None else None,
+                adjusted_price_per_carat=_opt("adjusted_price_per_carat"),
+                adjusted_price_total=_opt("adjusted_price_total"),
             )
         except (KeyError, TypeError, ValueError, AttributeError):
             logger.warning("dropping malformed comp from engine: %r", raw)

@@ -1,21 +1,25 @@
 """
-Scenario pricing for unknown treatment or origin.
+Scenario pricing for unknowns on the principal stone of a loose stone or a piece.
 
-When treatment is unknown we also price the stone under each plausible
-treatment for its variety ("if unheated" vs "if heated"); when origin is
-unknown for an origin-sensitive variety we price it under its main origins.
+- Diamond with unknown growth: priced as natural and as lab-grown.
+- Colored stone with unknown treatment: priced under each plausible treatment
+  ("if unheated" vs "if heated").
+- Colored stone with unknown origin, for an origin-sensitive variety: priced
+  under its main origins.
+
 Each scenario obeys the same 5-comp floor as the primary valuation.
 """
 
 from dataclasses import dataclass
 
-from enterprise.engine.base import StoneQuery
+from enterprise.engine.base import ItemQuery
 
 TREATMENT_SCENARIOS_BY_VARIETY = {
     "emerald": ("none", "oiled"),
     "tanzanite": ("heated", "none"),
 }
 DEFAULT_TREATMENT_SCENARIOS = ("none", "heated")
+GROWTH_SCENARIOS = ("natural", "lab_grown")
 
 # Varieties whose price depends materially on origin, with the origins to price.
 ORIGIN_SCENARIOS = {
@@ -38,7 +42,7 @@ class Scenario:
     scenario_id: str
     label: str
     assumptions: dict
-    query: StoneQuery
+    query: ItemQuery
 
 
 def is_origin_sensitive(variety: str) -> bool:
@@ -51,31 +55,36 @@ def _treatment_label(treatment: str, species: str | None) -> str:
     return f"If {treatment}"
 
 
-def _origin_label(origin: str) -> str:
-    return f"If {origin.replace('_', ' ').title()} origin"
-
-
-def build_scenarios(query: StoneQuery) -> list[Scenario]:
+def build_scenarios(query: ItemQuery) -> list[Scenario]:
+    stone = query.principal
+    if stone is None:
+        return []
     scenarios: list[Scenario] = []
-    if query.treatment is None:
-        options = TREATMENT_SCENARIOS_BY_VARIETY.get(query.variety, DEFAULT_TREATMENT_SCENARIOS)
-        for t in options:
-            scenarios.append(
-                Scenario(
-                    scenario_id=f"treatment:{t}",
-                    label=_treatment_label(t, query.species),
-                    assumptions={"treatment": t},
-                    query=query.with_overrides(treatment=t),
-                )
-            )
-    if query.origin is None and is_origin_sensitive(query.variety):
-        for o in ORIGIN_SCENARIOS[query.variety]:
-            scenarios.append(
-                Scenario(
-                    scenario_id=f"origin:{o}",
-                    label=_origin_label(o),
-                    assumptions={"origin": o},
-                    query=query.with_overrides(origin=o),
-                )
-            )
+    if stone.variety == "diamond":
+        if stone.growth is None:
+            for g in GROWTH_SCENARIOS:
+                scenarios.append(Scenario(
+                    scenario_id=f"growth:{g}",
+                    label="If natural" if g == "natural" else "If lab-grown",
+                    assumptions={"growth": g},
+                    query=query.with_principal(growth=g),
+                ))
+        return scenarios
+
+    if stone.treatment is None:
+        for t in TREATMENT_SCENARIOS_BY_VARIETY.get(stone.variety, DEFAULT_TREATMENT_SCENARIOS):
+            scenarios.append(Scenario(
+                scenario_id=f"treatment:{t}",
+                label=_treatment_label(t, stone.species),
+                assumptions={"treatment": t},
+                query=query.with_principal(treatment=t),
+            ))
+    if stone.origin is None and is_origin_sensitive(stone.variety):
+        for o in ORIGIN_SCENARIOS[stone.variety]:
+            scenarios.append(Scenario(
+                scenario_id=f"origin:{o}",
+                label=f"If {o.replace('_', ' ').title()} origin",
+                assumptions={"origin": o},
+                query=query.with_principal(origin=o),
+            ))
     return scenarios[:MAX_SCENARIOS]
