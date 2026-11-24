@@ -20,8 +20,8 @@ metering). Each product is a separate SKU, so a customer can buy one without the
 Comps is the core: every other product calls it. This release builds Comps v1 and the minimum
 platform layer it needs.
 
-> The product spec's overview describes the suite as being for "colored gemstones". The suite covers
-> all jewelry; the spec should be updated to match.
+The product spec (the GemstoneAI Enterprise Claude Doc) was updated on 2026-11-24 to reflect
+all-jewelry scope.
 
 ---
 
