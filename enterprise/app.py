@@ -28,6 +28,7 @@ from enterprise.engine.sandbox import SandboxScanEngine
 from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
+from enterprise.routes_products import router as products_router
 from enterprise.settings import EnterpriseSettings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,9 @@ def create_enterprise_app(
         description=API_DESCRIPTION,
         openapi_tags=[
             {"name": "Scan API", "description": "Scan jewelry and loose stones: identify and price."},
+            {"name": "Intake", "description": "Route consigned items: list, review, lab or decline."},
+            {"name": "Estimate", "description": "Pre-sale estimates and reserves from realized sales."},
+            {"name": "Verify", "description": "Risk signals for listings, claims and appraisals."},
             {"name": "Account", "description": "Usage and account information."},
         ],
         openapi_url="/openapi.json",
@@ -99,6 +103,7 @@ def create_enterprise_app(
     app.state.enterprise = state
     install_error_handlers(app)
     app.include_router(router)
+    app.include_router(products_router)
     return app
 
 
