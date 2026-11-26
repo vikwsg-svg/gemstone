@@ -85,7 +85,7 @@
     </div>
     <div class="split">
       <div>
-        <ul class="list"><li>Send the same photos as a scan, plus the consignor&rsquo;s description and your reference.</li><li>Get the decision with coded reasons, the rules that produced it, suggested listing fields and the full scan behind it.</li><li>Change your thresholds with <code>PUT /intake/rules</code>; every later decision records the rules it used.</li></ul>
+        <ul class="list"><li>Send the same photos as a scan, plus the consignor&rsquo;s description and your reference.</li><li>Get the decision with coded reasons, the rules that produced it, suggested listing fields and the full scan behind it.</li><li>Change your thresholds with <code>PUT /intake/rules</code>; every later decision records the rules it used.</li><li>Work the queue with <code>GET /intake/items</code>, record final decisions with <code>POST /intake/items/{id}/review</code>, and read the pilot metrics from <code>GET /intake/stats</code>.</li></ul>
         <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/intake/items</span><span>request</span></div>
 <pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/intake/items \
   -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
@@ -121,9 +121,9 @@
     <div>
       <span class="eyebrow">Delivery</span>
       <h2 style="margin:14px 0 18px">At the intake station and in the back office.</h2>
-      <ul class="list"><li><strong>An API</strong> for your consignment system, available now</li><li><strong>Your rules, your thresholds:</strong> set and change them through the API at any time</li><li><strong>An intake-station web app</strong> for associates and <strong>batch mode</strong> for back-of-house queues: on the roadmap</li></ul>
+      <ul class="list"><li><strong>The intake station:</strong> a web app for associates. Take photos on a phone or tablet, add what the consignor said, get the routing, and record the specialist&rsquo;s final decision.</li><li><strong>An API</strong> for your consignment system, with <strong>webhooks</strong> when each decision is ready</li><li><strong>Batch mode</strong> for back-of-house queues: upload a spreadsheet of photo links, download one decision per row</li><li><strong>Your rules, your thresholds,</strong> changed in the app or the API at any time</li></ul>
     </div>
-    <div><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Gemologist hours per 100 items, time from receipt to listing, and the share of List-routed items later corrected by an expert (target under 2%).</p></div></div>
+    <div><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Gemologist hours per 100 items, time from receipt to listing, and the share of List-routed items later corrected by an expert (target under 2%). Specialists record their final decision on each item, and the correction rate is calculated for you as the pilot runs.</p></div></div>
   </div>
 </section>
 

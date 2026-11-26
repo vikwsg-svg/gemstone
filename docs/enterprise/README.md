@@ -48,6 +48,10 @@ businesses need around it.
  Intake / Verify (enterprise/products/):
    request ─▶ ScanService (metered under the product) ─▶ product rules ─▶ ent_product_records
                                                          (account settings)  (decision + full scan)
+   queue, final call (review), stats, CSV batch ◀──────────────────────────────┘
+   webhook events ─▶ ent_webhook_deliveries (outbox) ─▶ signed POST to the customer
+
+ Console (/enterprise/v1/console/): a browser app on the same public endpoints
 ```
 
 What the enterprise layer adds to the scan:
@@ -98,7 +102,8 @@ curl -s localhost:8000/enterprise/v1/scans \
 ```
 
 The other products work the same way with their own scope, for example
-`create-key --tenant ten_... --scopes scan,intake,verify`, then
+`create-key --tenant ten_... --scopes scan,intake,verify`, then open the console at
+http://localhost:8000/enterprise/v1/console/ and sign in with the key, or
 `POST /enterprise/v1/intake/items` with the same `photos` body.
 
 Run the tests with `pytest tests/enterprise`. Set `ENTERPRISE_TEST_POSTGRES_URL` to a disposable
@@ -128,7 +133,8 @@ are stored as SHA-256 hashes and shown once at creation.
 | `POST /scans/batch` | Upload a CSV; starts an async job |
 | `GET /scans/batch/{job_id}` | Job status and counts |
 | `GET /scans/batch/{job_id}/results` | Results CSV |
-| `GET /usage` | Scans per day for your account (`start_date`, `end_date`) |
+| `GET /usage` | Scans per day for your account, by product (`start_date`, `end_date`) |
+| `GET /account` | The account and key making the request: environment and scopes |
 
 ### `POST /scans` request
 
@@ -282,13 +288,23 @@ Both follow one pattern:
   decision can be explained later even after the rules change.
 - If the scan is still running, the POST answers `202` with `status: processing`; the GET finishes
   it. POSTs accept `Idempotency-Key`.
+- Around every record: a **work queue**, the reviewer's **final call**, the **pilot metrics**, a
+  **CSV batch** and **webhooks** (below), and the **console** for people who work the queue.
 
 | Method and path | Scope | Purpose |
 | --- | --- | --- |
 | `POST /intake/items`, `GET /intake/items/{id}` | `intake` | Route a consigned item |
+| `GET /intake/items` | `intake` | The queue: filter by `decision`, `reviewed`, `final_decision`, `reference`, dates; `format=csv` |
+| `POST /intake/items/{id}/review` | `intake` | Record the specialist's final decision |
+| `GET /intake/stats` | `intake` | Pilot metrics |
 | `GET`/`PUT /intake/rules` | `intake` | The account's routing rules |
+| `POST /intake/items/batch`, `GET .../batch/{job_id}`, `GET .../batch/{job_id}/results` | `intake` | CSV batch |
 | `POST /verify/checks`, `GET /verify/checks/{id}` | `verify` | Risk-check a listing, claim or appraisal |
+| `GET /verify/checks` | `verify` | The review queue: open flags by risk by default; filter by `action`, `reviewed`, `outcome`, `min_score`, `seller_id`, dates; `format=csv` |
+| `POST /verify/checks/{id}/review` | `verify` | Record the verdict: `confirmed` or `cleared` |
+| `GET /verify/stats` | `verify` | Pilot metrics |
 | `GET`/`PUT /verify/settings` | `verify` | Risk thresholds |
+| `POST /verify/checks/batch`, `GET .../batch/{job_id}`, `GET .../batch/{job_id}/results` | `verify` | CSV batch |
 
 ### Intake
 
@@ -331,6 +347,72 @@ authentication or certification.
 
 ---
 
+### Final calls and pilot metrics
+
+`POST .../{id}/review` records what a person decided after looking: for Intake the decision the
+specialist actually made (`list`, `review`, `lab`, `decline`), for Verify whether the flag was real
+(`confirmed` or `cleared`). Each call carries an optional `note` and `reviewer`; a new call
+replaces the current one and the earlier calls are kept in `review.previous`. The record then shows
+`review.agrees`: whether the person agreed with the product.
+
+These calls are what the pilot success metrics are computed from (`GET .../stats?start_date&end_date`,
+default the last 30 days):
+
+- **Intake:** decisions by type, how many were reviewed, the agreement rate, and the
+  **List-route correction rate**: of the List-routed items a specialist reviewed, the share they
+  changed (the spec's target is under 2%).
+- **Verify:** checks by action, flags, flags reviewed, **flag precision** (confirmed ÷ reviewed
+  flags), the **precision of the top 5%** of checks by risk score, and the stated value of
+  confirmed problems by currency.
+
+### Batch
+
+`POST /intake/items/batch` and `POST /verify/checks/batch` take the same CSV as `POST /scans/batch`
+(`photo_urls` required, optional detail columns) plus each product's fields: Intake `reference`
+(default `row_id`) and `consignor_description`; Verify `external_id` (default `row_id`),
+`subject_type` (default `listing`), `seller_id`, `stated_value`, `currency`. Each row becomes a
+normal record, exactly as if sent one at a time, so it appears in the queue and the metrics. The
+results CSV has one row per input row with the same columns as the queue export.
+
+### Webhooks
+
+One endpoint per account, for any key: `PUT /webhooks {url, events}` (the signing secret is returned
+once, and again only with `rotate_secret: true`), `GET`/`DELETE /webhooks`, `POST /webhooks/test`,
+`GET /webhooks/deliveries`, `POST /webhooks/deliveries/{id}/retry`.
+
+| Event | Sent when |
+| --- | --- |
+| `intake.item.completed` | An Intake decision is ready |
+| `verify.check.completed` | A Verify check is ready |
+| `verify.check.flagged` | A Verify check's action is anything but `allow` |
+| `batch.completed` | A batch job finished (any product) |
+
+Each delivery is a JSON POST: `{id, type, created_at, data: {object, id, path, summary}}`, where
+`summary` is the record's queue row (never photos) and `path` is where to fetch the full record.
+Headers: `GemstoneAI-Event-Id`, `GemstoneAI-Event-Type` and
+`GemstoneAI-Signature: t=<unix>,v1=<hex>`, an HMAC-SHA256 of `<t>.<raw body>` with the secret.
+Only https URLs on public hosts are accepted, checked again at each delivery. Events are written
+with the record (outbox) and sent after the response; failures are retried on later runs up to 5
+attempts, then marked `failed`. In production run `python -m enterprise.cli webhooks-dispatch` every
+minute (or on a worker) so retries don't wait for the next event.
+
+### Console
+
+`/enterprise/v1/console/` is a small web app for the people who work the queues, served by the API
+and signed in with an API key (kept only in the browser tab):
+
+- **Intake station:** take or link photos, add the consignor's words, scan and route; record the
+  final decision; recent items with filters and CSV export; the pilot metrics at the top.
+- **Verify queue:** open flags ranked by risk, each check with its evidence, confirmed/cleared
+  verdicts, a form to check an item; the pilot metrics at the top.
+- **Settings:** routing rules, risk thresholds, the webhook endpoint, a test event and recent
+  deliveries.
+
+It uses only the public API and is served with a strict Content Security Policy. A sandbox key
+gives a working demo with example results.
+
+---
+
 ## Data: realized vs asking
 
 Auction and resale customers judge everything by realized prices, so every comparable says what kind
@@ -356,12 +438,14 @@ expect most comparables to be asking prices until realized-price sources are add
 | `ENTERPRISE_SCAN_WAIT_SECONDS`, `ENTERPRISE_SCAN_POLL_INTERVAL_SECONDS` | `8.0`, `1.0` | How long `POST /scans` waits before answering `202 processing` |
 | `ENTERPRISE_IDEMPOTENCY_TTL_HOURS` | `24` | |
 | `ENTERPRISE_BATCH_MAX_ROWS`, `ENTERPRISE_BATCH_MAX_BYTES` | `5000`, `5000000` | |
+| `ENTERPRISE_WEBHOOK_ALLOW_PRIVATE_HOSTS` | `false` | Allow http and private hosts for webhooks (local development only) |
+| `ENTERPRISE_WEBHOOK_TIMEOUT_SECONDS`, `ENTERPRISE_WEBHOOK_MAX_ATTEMPTS` | `10.0`, `5` | |
 
 **Migrations:** `ENTERPRISE_DATABASE_URL=... alembic -c enterprise/alembic.ini upgrade head`.
 Verified against SQLite and Postgres 16. Do not run against production without review.
 
 **Operator CLI** (`python -m enterprise.cli --help`): `create-tenant`, `create-key`, `revoke-key`,
-`pin-model`, `export-openapi`, `init-db` (SQLite only).
+`pin-model`, `webhooks-dispatch`, `export-openapi`, `init-db` (SQLite only).
 
 ## Known limitations (v1)
 
@@ -373,6 +457,10 @@ Verified against SQLite and Postgres 16. Do not run against production without r
   storage and retention terms.
 - Batch jobs run in-process after the response. `process_batch_job` is a plain function, ready to
   move onto the existing Celery workers; a job interrupted by a restart stays `running`.
-- No admin console, SSO, billing or webhooks (out of scope for v1).
+- The console signs in with an API key; SSO, user accounts and roles (associate vs admin) are not
+  built. No billing.
+- Queues use offset pagination and CSV exports stop at 10,000 rows.
+- Webhook signing secrets are stored in clear (needed to sign); encrypt them at rest before
+  production.
 - Verify cannot yet check a lab report number against the stone, match edited or cropped copies of
   a photo, or compare stated materials field by field: those need data from the backend.

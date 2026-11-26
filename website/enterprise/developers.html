@@ -57,12 +57,25 @@
 <tr><th colspan="2" class="group">Intake &middot; scope <code>intake</code></th></tr>
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items</code></td><td>Scan a consigned item and route it: list, review, lab or decline, with reasons</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items/{id}</code></td><td>Retrieve an intake decision</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items</code></td><td>The queue: filter by decision, review state, reference or date; CSV export</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items/{id}/review</code></td><td>Record the specialist&rsquo;s final decision</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/stats</code></td><td>Pilot metrics, including the List-route correction rate</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/intake/rules</code></td><td>Read or set your routing thresholds</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items/batch</code></td><td>Route a CSV of items; status and results CSV under <code>/intake/items/batch/{job_id}</code></td></tr>
 <tr><th colspan="2" class="group">Verify &middot; scope <code>verify</code></th></tr>
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks</code></td><td>Scan an item and risk-check a listing, claim or appraisal</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks/{id}</code></td><td>Retrieve a risk check</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks</code></td><td>The review queue: open flags, highest risk first; filters and CSV export</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks/{id}/review</code></td><td>Record the verdict: confirmed or cleared</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/stats</code></td><td>Pilot metrics, including the precision of the top 5% of flags</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/verify/settings</code></td><td>Read or set your risk thresholds</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks/batch</code></td><td>Screen a CSV of listings or claims; status and results under <code>/verify/checks/batch/{job_id}</code></td></tr>
+<tr><th colspan="2" class="group">Webhooks &middot; any key</th></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><span class="method method-delete">DELETE</span><code>/webhooks</code></td><td>Your endpoint: URL and events; the signing secret is shown once</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/webhooks/test</code></td><td>Send a test event now</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/webhooks/deliveries</code></td><td>Recent deliveries; retry one with <code>POST /webhooks/deliveries/{id}/retry</code></td></tr>
 <tr><th colspan="2" class="group">Account</th></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/account</code></td><td>The account and key: environment and product scopes</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Scans per day for your account, by product</td></tr>
     </tbody></table></div>
   </div>
@@ -118,8 +131,23 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Batch</span>
-      <h2>Revalue a whole portfolio from a spreadsheet.</h2>
-      <p>Upload a CSV with one piece or stone per row (photo links, plus anything you already know), poll the job, and download one result row per item with its identification, price, comparable counts and scan ID.</p>
+      <h2>A spreadsheet in, a spreadsheet out.</h2>
+      <p>Every product takes a CSV with one item per row (photo links, plus anything you already know): revalue a portfolio with the Scan API, route a back-of-house queue with Intake, or screen a claims backlog with Verify. Poll the job, then download one result row per item.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container split">
+    <div>
+      <span class="eyebrow">Webhooks</span>
+      <h2 style="margin:14px 0 18px">Get told, don&rsquo;t poll.</h2>
+      <ul class="list"><li><strong>Events:</strong> <code>intake.item.completed</code>, <code>verify.check.completed</code>, <code>verify.check.flagged</code> and <code>batch.completed</code></li><li><strong>Signed:</strong> <code>GemstoneAI-Signature: t=&lt;unix&gt;,v1=&lt;hex&gt;</code>, an HMAC-SHA256 of the timestamp and raw body with your secret</li><li><strong>Small payloads:</strong> a summary of the result and its path, never photos</li><li><strong>Retried</strong> on failure, with a delivery log you can read and retry from</li></ul>
+    </div>
+    <div>
+      <span class="eyebrow">Console</span>
+      <h2 style="margin:14px 0 18px">For the people who work the queue.</h2>
+      <p style="color:var(--ink-2)">A web app on the same API at <code>/enterprise/v1/console/</code>: the intake station for associates, the Verify review queue for analysts, and settings for your rules and webhook. Sign in with a sandbox key to try it with example results.</p>
     </div>
   </div>
 </section>

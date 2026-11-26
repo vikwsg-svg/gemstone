@@ -68,12 +68,12 @@
     <div>
       <span class="eyebrow">Outputs</span>
       <h2 style="margin:14px 0 18px">A ranked queue, with the evidence.</h2>
-      <ul class="list"><li><strong>Risk score</strong> from 0 to 100</li><li><strong>The checks that fired,</strong> with their evidence</li><li><strong>A suggested action:</strong> allow, request lab report, manual review or hold</li></ul>
+      <ul class="list"><li><strong>Risk score</strong> from 0 to 100</li><li><strong>The checks that fired,</strong> with their evidence</li><li><strong>A suggested action:</strong> allow, request lab report, manual review or hold</li><li><strong>A review queue</strong> of open flags, highest risk first, where your team marks each one confirmed or cleared</li></ul>
     </div>
     <div>
       <span class="eyebrow">Delivery</span>
       <h2 style="margin:14px 0 18px">Where your team already works.</h2>
-      <ul class="list"><li><strong>A real-time API</strong> at listing or claim submission, available now</li><li><strong>A nightly batch</strong> over live inventory and <strong>webhooks</strong> into your trust and safety or claims queue: on the roadmap</li></ul>
+      <ul class="list"><li><strong>A real-time API</strong> at listing or claim submission</li><li><strong>Webhooks</strong> into your trust and safety or claims queue the moment a check is flagged</li><li><strong>Batch</strong> over live inventory or a claims backlog: upload a spreadsheet, download one result per row</li><li><strong>A review queue web app</strong> for analysts who don&rsquo;t live in your own tools</li></ul>
     </div>
   </div>
 </section>
@@ -86,7 +86,7 @@
     </div>
     <div class="split">
       <div>
-        <ul class="list"><li>Send the photos and what the listing or claim states: its id, the seller or claimant, the stated value.</li><li>Get a 0&ndash;100 risk score, a suggested action (allow, request lab report, manual review or hold) and every check with its evidence.</li><li>Set your thresholds with <code>PUT /verify/settings</code>. Duplicate photos and seller history are matched only within your own account.</li></ul>
+        <ul class="list"><li>Send the photos and what the listing or claim states: its id, the seller or claimant, the stated value.</li><li>Get a 0&ndash;100 risk score, a suggested action (allow, request lab report, manual review or hold) and every check with its evidence.</li><li>Set your thresholds with <code>PUT /verify/settings</code>. Duplicate photos and seller history are matched only within your own account.</li><li>Pull the open flags with <code>GET /verify/checks</code>, record verdicts with <code>POST /verify/checks/{id}/review</code>, and read flag precision from <code>GET /verify/stats</code>.</li></ul>
         <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/verify/checks</span><span>request</span></div>
 <pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/verify/checks \
   -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
@@ -102,10 +102,10 @@
   <span class="k">"object"</span>: <span class="s">"verify_check"</span>,
   <span class="k">"reference"</span>: <span class="s">"CLM-5512"</span>,
   <span class="k">"risk"</span>: {
-    <span class="k">"risk_score"</span>: <span class="n">50</span>,
+    <span class="k">"risk_score"</span>: <span class="n">55</span>,
     <span class="k">"action"</span>: <span class="s">"manual_review"</span>,
     <span class="k">"checks"</span>: [
-      { <span class="k">"code"</span>: <span class="s">"price_too_high"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">35</span>,
+      { <span class="k">"code"</span>: <span class="s">"price_too_high"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">40</span>,
         <span class="k">"message"</span>: <span class="s">"The stated $14,500 is far above the scan's range of $1,800&ndash;$5,200; this can mean inflation."</span> },
       { <span class="k">"code"</span>: <span class="s">"possible_other_identity"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">15</span>,
         <span class="k">"message"</span>: <span class="s">"It could be something else: Center stone is a lab-grown diamond (30%)"</span> },
@@ -121,7 +121,7 @@
 </section>
 
 <section class="section-tight">
-  <div class="container"><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Precision of the top 5% of flags (the share confirmed as real problems on review) and the dollar value of the problems caught.</p></div></div>
+  <div class="container"><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Precision of the top 5% of flags (the share confirmed as real problems on review) and the dollar value of the problems caught. Both are calculated from your team&rsquo;s verdicts as the pilot runs.</p></div></div>
 </section>
 
 <section class="cta-band">
