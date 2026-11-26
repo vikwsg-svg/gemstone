@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GemstoneAI Enterprise API",
-    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for jewelry.\n\nThe **Scan API** is today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos of\na piece of jewelry or a loose stone (plus anything you already know) and get the whole result in\none response: the identification (observations, alternatives, open questions, next evidence),\nthe price context, and the comparables behind it, each tagged as an asking price or a realized\nsale.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys return example scan results; responses carry `synthetic_data: true`.\n* **No guessing:** no price with fewer than 5 comparables, or when the item can't be identified;\n  the reason is always given.\n* **Audit:** every scan is stored and retrievable by `scan_id`.\n* **Versioned:** every result is stamped with the scan `model_version`; you can pin one.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
+    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for jewelry.\n\n* **Scan API** (`/scans`): today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos\n  of a piece of jewelry or a loose stone (plus anything you already know) and get the\n  identification, the price context and the comparables behind it, each tagged as an asking price\n  or a realized sale.\n* **Intake** (`/intake`): the scan plus your routing rules: list, review, lab or decline.\n* **Estimate** (`/estimate`): the scan plus a pre-sale estimate and reserve built only from realized\n  sales.\n* **Verify** (`/verify`): the scan plus risk checks on a listing, claim or appraisal.\n* **Index** (`/index`): the GemstoneAI Price Index (GPI) and sub-indices as a monthly feed.\n\nConventions:\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys return example results; responses carry `synthetic_data: true`.\n* **No guessing:** no price with fewer than 5 comparables, or when the item can't be identified;\n  the reason is always given.\n* **Audit:** every result is stored and retrievable by id, with the scan it was based on.\n* **Versioned:** every result is stamped with the scan `model_version`; you can pin one.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
     "version": "1.0.0"
   },
   "paths": {
@@ -573,6 +573,1249 @@
           }
         }
       }
+    },
+    "/intake/items": {
+      "post": {
+        "tags": [
+          "Intake"
+        ],
+        "summary": "Route a consigned item: list, review, lab or decline",
+        "description": "Scans the item, then applies your routing rules (`GET /intake/rules`). The decision is logged with its reasons, the rules used and the full scan.",
+        "operationId": "create_intake_item_intake_items_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntakeItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItemResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Scan still running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItemResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Scan service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/intake/items/{item_id}": {
+      "get": {
+        "tags": [
+          "Intake"
+        ],
+        "summary": "Retrieve an intake decision",
+        "operationId": "get_intake_item_intake_items__item_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItemResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/intake/rules": {
+      "get": {
+        "tags": [
+          "Intake"
+        ],
+        "summary": "Your routing rules",
+        "operationId": "get_intake_rules_intake_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeRules"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Intake"
+        ],
+        "summary": "Set your routing rules",
+        "operationId": "put_intake_rules_intake_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntakeRules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeRules"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/estimate/lots": {
+      "post": {
+        "tags": [
+          "Estimate"
+        ],
+        "summary": "Suggest a pre-sale estimate and reserve for a lot",
+        "description": "Scans the lot, then builds the estimate from realized sales among the comparables (the middle half of at least 5), rounded to auction increments. The reserve follows your policy (`GET /estimate/policy`). With fewer than 5 realized sales there is no number: comparables and context only.",
+        "operationId": "create_estimate_estimate_lots_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateLotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Scan still running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Scan service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/estimate/lots/{estimate_id}": {
+      "get": {
+        "tags": [
+          "Estimate"
+        ],
+        "summary": "Retrieve an estimate",
+        "operationId": "get_estimate_estimate_lots__estimate_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "estimate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Estimate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/estimate/policy": {
+      "get": {
+        "tags": [
+          "Estimate"
+        ],
+        "summary": "Your reserve policy and rounding increments",
+        "operationId": "get_estimate_policy_estimate_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimatePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Estimate"
+        ],
+        "summary": "Set your reserve policy and rounding increments",
+        "operationId": "put_estimate_policy_estimate_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimatePolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimatePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/verify/checks": {
+      "post": {
+        "tags": [
+          "Verify"
+        ],
+        "summary": "Risk-check a listing, claim or appraisal",
+        "description": "Scans the item, then checks the subject's stated value and photos against the scan and this account's history. Returns a 0-100 risk score, the checks that fired with their evidence, and a suggested action. A risk signal for review, not an authentication or certification.",
+        "operationId": "create_verify_check_verify_checks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional. Retrying with the same key and body returns the original response instead of running and billing again. Kept for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyCheckResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Scan still running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Scan service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify/checks/{check_id}": {
+      "get": {
+        "tags": [
+          "Verify"
+        ],
+        "summary": "Retrieve a risk check",
+        "operationId": "get_verify_check_verify_checks__check_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "check_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Check Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify/settings": {
+      "get": {
+        "tags": [
+          "Verify"
+        ],
+        "summary": "Your risk thresholds",
+        "operationId": "get_verify_settings_verify_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifySettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Verify"
+        ],
+        "summary": "Set your risk thresholds",
+        "operationId": "put_verify_settings_verify_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifySettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the required product scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/index/series": {
+      "get": {
+        "tags": [
+          "Index"
+        ],
+        "summary": "List the index series with their latest values",
+        "operationId": "list_series_index_series_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the `index` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/index/series/{series_key}": {
+      "get": {
+        "tags": [
+          "Index"
+        ],
+        "summary": "Monthly levels for one series",
+        "description": "Monthly levels with comparable counts, a thin-data flag, month-on-month and year-on-year change, and whether each value was revised. `format=csv` returns the same columns as a CSV file.",
+        "operationId": "get_series_index_series__series_key__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "series_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Series Key"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First month, YYYY-MM.",
+              "title": "Start"
+            },
+            "description": "First month, YYYY-MM."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last month, YYYY-MM.",
+              "title": "End"
+            },
+            "description": "Last month, YYYY-MM."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The series as JSON, or as CSV with `format=csv`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesResponse"
+                }
+              },
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the `index` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown series.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/index/corrections": {
+      "get": {
+        "tags": [
+          "Index"
+        ],
+        "summary": "Corrections to published values",
+        "description": "Published values are never overwritten. Each correction is listed here with the old and new level and the reason.",
+        "operationId": "list_corrections_index_corrections_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this series.",
+              "title": "Series"
+            },
+            "description": "Only this series."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only corrections published on or after this date.",
+              "title": "Since"
+            },
+            "description": "Only corrections published on or after this date."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Key lacks the `index` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -868,6 +2111,85 @@
         ],
         "title": "ComparablesOut"
       },
+      "Correction": {
+        "properties": {
+          "series_key": {
+            "type": "string",
+            "title": "Series Key"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "old_level": {
+            "type": "number",
+            "title": "Old Level"
+          },
+          "new_level": {
+            "type": "number",
+            "title": "New Level"
+          },
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "series_key",
+          "period",
+          "old_level",
+          "new_level",
+          "change_pct",
+          "reason",
+          "published_at"
+        ],
+        "title": "Correction"
+      },
+      "CorrectionList": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list",
+            "title": "Object",
+            "default": "list"
+          },
+          "synthetic_data": {
+            "type": "boolean",
+            "title": "Synthetic Data",
+            "description": "true for sandbox keys: generated example series, not market data."
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Correction"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "synthetic_data",
+          "data"
+        ],
+        "title": "CorrectionList"
+      },
       "ErrorDetail": {
         "properties": {
           "code": {
@@ -906,6 +2228,314 @@
           "error"
         ],
         "title": "ErrorResponse"
+      },
+      "EstimateBlock": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "no_estimate"
+            ],
+            "title": "Status"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "reserve": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserve",
+            "description": "From your reserve policy, if set."
+          },
+          "reserve_policy_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserve Policy Pct"
+          },
+          "based_on": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On",
+            "description": "Realized sales used: count, date range and median."
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale",
+            "description": "A paragraph a specialist can edit."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why there is no estimate."
+          },
+          "lot_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Number"
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SaleContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "realized_comparables": {
+            "items": {
+              "$ref": "#/components/schemas/ComparableOut"
+            },
+            "type": "array",
+            "title": "Realized Comparables"
+          },
+          "asking_comparables": {
+            "items": {
+              "$ref": "#/components/schemas/ComparableOut"
+            },
+            "type": "array",
+            "title": "Asking Comparables",
+            "description": "Listed separately; never used."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "currency",
+          "realized_comparables",
+          "asking_comparables"
+        ],
+        "title": "EstimateBlock"
+      },
+      "EstimateLotRequest": {
+        "properties": {
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoInput"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Photos",
+            "description": "1-5 photos of the same item."
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemDetails"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What you already know, passed to the scan."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "Pin a scan model version."
+          },
+          "lot_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Number"
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SaleContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored with the estimate; not used for the number."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photos"
+        ],
+        "title": "EstimateLotRequest"
+      },
+      "EstimatePolicy": {
+        "properties": {
+          "reserve_pct_of_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserve Pct Of Low",
+            "description": "Your house's reserve as a share of the low estimate, e.g. 0.8. No reserve is suggested until this is set."
+          },
+          "increments": {
+            "items": {
+              "$ref": "#/components/schemas/Increment"
+            },
+            "type": "array",
+            "title": "Increments",
+            "description": "Rounding steps for estimates and reserves, in ascending order."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EstimatePolicy"
+      },
+      "EstimateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "processing"
+            ],
+            "title": "Status",
+            "description": "processing: the scan is still running; retrieve this record later."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanResponse",
+            "description": "The full scan result the decision is based on."
+          },
+          "object": {
+            "type": "string",
+            "const": "estimate",
+            "title": "Object",
+            "default": "estimate"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateBlock"
+              },
+              {
+                "$ref": "#/components/schemas/ProcessingBlock"
+              }
+            ],
+            "title": "Estimate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "status",
+          "scan",
+          "estimate"
+        ],
+        "title": "EstimateResponse"
       },
       "IdentificationOut": {
         "properties": {
@@ -981,6 +2611,328 @@
           "status"
         ],
         "title": "IdentificationOut"
+      },
+      "Increment": {
+        "properties": {
+          "up_to": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up To",
+            "description": "Applies below this value; null = above all."
+          },
+          "step": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Step"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step"
+        ],
+        "title": "Increment"
+      },
+      "IndexPoint": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "description": "Month, YYYY-MM."
+          },
+          "level": {
+            "type": "number",
+            "title": "Level"
+          },
+          "comp_count": {
+            "type": "integer",
+            "title": "Comp Count",
+            "description": "Comparable sales behind this value."
+          },
+          "thin": {
+            "type": "boolean",
+            "title": "Thin",
+            "description": "Fewer comparables than `thin_below`: treat with caution."
+          },
+          "change_mom_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Mom Pct",
+            "description": "Change from the previous month, in %."
+          },
+          "change_yoy_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Yoy Pct",
+            "description": "Change from the same month last year, in %."
+          },
+          "revised": {
+            "type": "boolean",
+            "title": "Revised",
+            "description": "This value was corrected after first publication."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "level",
+          "comp_count",
+          "thin",
+          "change_mom_pct",
+          "change_yoy_pct",
+          "revised",
+          "published_at"
+        ],
+        "title": "IndexPoint"
+      },
+      "IntakeItemRequest": {
+        "properties": {
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoInput"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Photos",
+            "description": "1-5 photos of the same item."
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemDetails"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What you already know, passed to the scan."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "Pin a scan model version."
+          },
+          "consignor_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consignor Description",
+            "description": "What the consignor says the item is."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "Your consignment or item id."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photos"
+        ],
+        "title": "IntakeItemRequest"
+      },
+      "IntakeItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "processing"
+            ],
+            "title": "Status",
+            "description": "processing: the scan is still running; retrieve this record later."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanResponse",
+            "description": "The full scan result the decision is based on."
+          },
+          "object": {
+            "type": "string",
+            "const": "intake_item",
+            "title": "Object",
+            "default": "intake_item"
+          },
+          "routing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeRouting"
+              },
+              {
+                "$ref": "#/components/schemas/ProcessingBlock"
+              }
+            ],
+            "title": "Routing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "status",
+          "scan",
+          "routing"
+        ],
+        "title": "IntakeItemResponse"
+      },
+      "IntakeRouting": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "list",
+              "review",
+              "lab",
+              "decline"
+            ],
+            "title": "Decision"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "rules_applied": {
+            "$ref": "#/components/schemas/IntakeRules"
+          },
+          "consignor_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consignor Description"
+          },
+          "prefill": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Prefill",
+            "description": "Suggested listing fields from the scan."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "reasons",
+          "rules_applied",
+          "prefill"
+        ],
+        "title": "IntakeRouting"
+      },
+      "IntakeRules": {
+        "properties": {
+          "list_max_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "List Max Value",
+            "description": "List directly only when the high end is at or below this.",
+            "default": 2000
+          },
+          "min_confidence_to_list": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Confidence To List",
+            "description": "Minimum identification confidence to list directly.",
+            "default": 0.85
+          },
+          "lab_min_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Lab Min Value",
+            "description": "Send to lab when the low end is at or above this.",
+            "default": 5000
+          },
+          "decline_below_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Decline Below Value",
+            "description": "Decline when the high end is below this.",
+            "default": 50
+          },
+          "lab_spread_ratio": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Lab Spread Ratio",
+            "description": "Send to lab when a lab report is suggested and high >= this x low.",
+            "default": 2.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "IntakeRules"
       },
       "ItemDetails": {
         "properties": {
@@ -1298,6 +3250,135 @@
         ],
         "title": "PriceContextOut"
       },
+      "ProcessingBlock": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "processing",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ProcessingBlock"
+      },
+      "Reason": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "Reason"
+      },
+      "RiskCheck": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "ran": {
+            "type": "boolean",
+            "title": "Ran"
+          },
+          "fired": {
+            "type": "boolean",
+            "title": "Fired"
+          },
+          "weight": {
+            "type": "integer",
+            "title": "Weight"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "ran",
+          "fired",
+          "weight",
+          "message",
+          "evidence"
+        ],
+        "title": "RiskCheck"
+      },
+      "SaleContext": {
+        "properties": {
+          "house": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "House"
+          },
+          "sale_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Name"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "live",
+                  "online"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "sale_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SaleContext"
+      },
       "ScanRequest": {
         "properties": {
           "photos": {
@@ -1489,6 +3570,212 @@
         ],
         "title": "ScanResponse"
       },
+      "SeriesList": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list",
+            "title": "Object",
+            "default": "list"
+          },
+          "synthetic_data": {
+            "type": "boolean",
+            "title": "Synthetic Data",
+            "description": "true for sandbox keys: generated example series, not market data."
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesSummary"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "synthetic_data",
+          "data"
+        ],
+        "title": "SeriesList"
+      },
+      "SeriesResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "index_series",
+            "title": "Object",
+            "default": "index_series"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "methodology_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methodology Version"
+          },
+          "thin_below": {
+            "type": "integer",
+            "title": "Thin Below"
+          },
+          "synthetic_data": {
+            "type": "boolean",
+            "title": "Synthetic Data",
+            "description": "true for sandbox keys: generated example series, not market data."
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/IndexPoint"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "description",
+          "methodology_version",
+          "thin_below",
+          "synthetic_data",
+          "data"
+        ],
+        "title": "SeriesResponse"
+      },
+      "SeriesSummary": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "methodology_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methodology Version"
+          },
+          "first_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Period"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "description",
+          "methodology_version",
+          "first_period",
+          "latest"
+        ],
+        "title": "SeriesSummary"
+      },
+      "Subject": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "listing",
+              "claim",
+              "appraisal"
+            ],
+            "title": "Type"
+          },
+          "external_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "External Id",
+            "description": "Your id for the listing or claim."
+          },
+          "seller_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Id",
+            "description": "The seller or claimant, for repeat patterns."
+          },
+          "stated_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stated Value",
+            "description": "The asking price, claimed value or appraised value."
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "USD"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "external_id"
+        ],
+        "title": "Subject"
+      },
       "UsageDay": {
         "properties": {
           "date": {
@@ -1556,6 +3843,215 @@
           "data"
         ],
         "title": "UsageResponse"
+      },
+      "VerifyCheckRequest": {
+        "properties": {
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoInput"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Photos",
+            "description": "1-5 photos of the same item."
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemDetails"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What you already know, passed to the scan."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "Pin a scan model version."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject",
+            "description": "The listing, claim or appraisal being checked."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photos",
+          "subject"
+        ],
+        "title": "VerifyCheckRequest"
+      },
+      "VerifyCheckResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "processing"
+            ],
+            "title": "Status",
+            "description": "processing: the scan is still running; retrieve this record later."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanResponse",
+            "description": "The full scan result the decision is based on."
+          },
+          "object": {
+            "type": "string",
+            "const": "verify_check",
+            "title": "Object",
+            "default": "verify_check"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerifyRisk"
+              },
+              {
+                "$ref": "#/components/schemas/ProcessingBlock"
+              }
+            ],
+            "title": "Risk"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "status",
+          "scan",
+          "risk"
+        ],
+        "title": "VerifyCheckResponse"
+      },
+      "VerifyRisk": {
+        "properties": {
+          "risk_score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Risk Score"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "request_lab_report",
+              "manual_review",
+              "hold"
+            ],
+            "title": "Action"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/RiskCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "settings_applied": {
+            "$ref": "#/components/schemas/VerifySettings"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "risk_score",
+          "action",
+          "checks",
+          "subject",
+          "settings_applied",
+          "note"
+        ],
+        "title": "VerifyRisk"
+      },
+      "VerifySettings": {
+        "properties": {
+          "price_low_ratio": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Price Low Ratio",
+            "description": "Flag a stated value below this share of the low end.",
+            "default": 0.5
+          },
+          "price_high_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 1.0,
+            "title": "Price High Ratio",
+            "description": "Flag a stated value above this multiple of the high end.",
+            "default": 1.5
+          },
+          "review_at": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Review At",
+            "default": 40
+          },
+          "hold_at": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Hold At",
+            "default": 70
+          },
+          "seller_lookback_days": {
+            "type": "integer",
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Seller Lookback Days",
+            "default": 90
+          },
+          "seller_flag_count": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Seller Flag Count",
+            "description": "Prior flagged checks for a seller that trigger seller_pattern.",
+            "default": 2
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VerifySettings"
       }
     },
     "securitySchemes": {
@@ -1576,6 +4072,22 @@
     {
       "name": "Scan API",
       "description": "Scan jewelry and loose stones: identify and price."
+    },
+    {
+      "name": "Intake",
+      "description": "Route consigned items: list, review, lab or decline."
+    },
+    {
+      "name": "Estimate",
+      "description": "Pre-sale estimates and reserves from realized sales."
+    },
+    {
+      "name": "Verify",
+      "description": "Risk signals for listings, claims and appraisals."
+    },
+    {
+      "name": "Index",
+      "description": "The GemstoneAI Price Index (GPI) and sub-indices."
     },
     {
       "name": "Account",
