@@ -165,8 +165,9 @@ class EstimateHandler(ProductHandler):
             sentences.append(f"At your reserve policy of {policy.reserve_pct_of_low:.0%} of the low "
                              f"estimate, the reserve would be {_money(reserve, currency)}.")
         if asking:
-            sentences.append(f"{len(asking)} asking price{'s are' if len(asking) != 1 else ' is'} listed "
-                             "separately and were not used.")
+            many = len(asking) != 1
+            sentences.append(f"{len(asking)} asking price{'s are' if many else ' is'} listed "
+                             f"separately and {'were' if many else 'was'} not used.")
         if ident.get("open_questions"):
             sentences.append("Still open: " + " ".join(ident["open_questions"]))
 

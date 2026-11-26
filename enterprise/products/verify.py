@@ -24,7 +24,7 @@ fingerprinted by their bytes, linked photos by their URL, so a re-encoded or
 cropped copy is not caught (perceptual matching needs the backend).
 """
 
-from datetime import timedelta
+from datetime import timedelta, timezone
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -80,6 +80,10 @@ class Subject(BaseModel):
     currency: str = Field(default="USD", min_length=3, max_length=3)
 
 
+def _iso(value) -> str:
+    return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
+
+
 def _money(value: float, currency: str) -> str:
     return f"${value:,.0f}" if currency == "USD" else f"{value:,.0f} {currency}"
 
@@ -109,10 +113,12 @@ class VerifyHandler(ProductHandler):
             for code in ("price_too_low", "price_too_high"):
                 check(code, False, "Not run: no stated value was given.", ran=False)
         elif price["status"] != "provided" or price["currency"] != subject.currency:
-            reason = (price.get("withheld_reason") or "no scan price") if price["status"] != "provided" \
-                else f"the scan price is in {price['currency']}"
+            reason = ("the scan gave no price" if price["status"] != "provided"
+                      else f"the scan price is in {price['currency']}, not {subject.currency}")
             for code in ("price_too_low", "price_too_high"):
-                check(code, False, f"Not run: {reason}.", ran=False)
+                check(code, False, f"Not run: {reason}.", ran=False,
+                      evidence={"withheld_reason": price.get("withheld_reason")}
+                      if price["status"] != "provided" else {})
         else:
             low, high, cur, stated = price["low"], price["high"], price["currency"], subject.stated_value
             evidence = {"stated_value": stated, "scan_low": low, "scan_high": high, "currency": cur}
@@ -150,12 +156,18 @@ class VerifyHandler(ProductHandler):
                 PhotoFingerprint.sha256.in_(ctx.photo_hashes),
                 PhotoFingerprint.record_id != ctx.record_id,
             ).order_by(PhotoFingerprint.created_at)).all()
-            matches = [{"record_id": r.record_id, "product": r.product, "reference": r.reference,
-                        "seen_at": r.created_at.isoformat()}
-                       for r in rows if r.reference != subject.external_id][:5]
+            seen: set[str] = set()
+            for r in rows:  # one entry per earlier record, however many of its photos match
+                if r.reference == subject.external_id or r.record_id in seen:
+                    continue
+                seen.add(r.record_id)
+                matches.append({"record_id": r.record_id, "product": r.product,
+                                "reference": r.reference, "seen_at": _iso(r.created_at)})
+            matches = matches[:5]
         check("duplicate_imagery", bool(matches),
-              f"The same photo was already used {len(matches)} time{'s' if len(matches) != 1 else ''} "
-              "in this account under another reference." if matches else "No reused photos found.",
+              f"A photo was already used in this account on {len(matches)} other "
+              f"record{'s' if len(matches) != 1 else ''} under another reference." if matches
+              else "No reused photos found.",
               {"matches": matches})
 
         # Seller pattern.

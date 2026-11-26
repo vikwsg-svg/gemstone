@@ -77,7 +77,8 @@ class IntakeHandler(ProductHandler):
                                    "The scan could not identify the item, so a specialist should look."))
         elif price["status"] != "provided":
             decision = "review"
-            reasons.append(_reason("no_price", f"No price was given: {price['withheld_reason']}"))
+            reasons.append(_reason("no_price", ("The scan gave no price. "
+                                                + (price.get("withheld_reason") or "")).strip()))
         else:
             low, high, cur = price["low"], price["high"], price["currency"]
             lab_suggested = any(_LAB_WORDS.search(e) for e in ident.get("next_evidence", []))

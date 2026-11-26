@@ -179,6 +179,7 @@ def test_estimate_from_realized_sales(client, key, engine):
     assert est["reserve"] is None
     assert any("reserve policy" in n for n in est["notes"])
     assert "7 realized sales" in est["rationale"] and "in Oct 2026" in est["rationale"]
+    assert "1 asking price is listed separately and was not used." in est["rationale"]
     assert est["sale"]["house"] == "Example House"
 
 
@@ -318,3 +319,23 @@ def test_verify_hold_threshold_and_settings(client, key):
 def test_verify_requires_a_subject(client, key):
     r = client.post(f"{BASE}/verify/checks", headers=key.headers, json={"photos": photo_urls(1)})
     assert r.status_code == 422
+
+
+def test_verify_lists_each_earlier_record_once(client, key):
+    photos = [{"url": "https://photos.example.com/front.jpg"}, {"url": "https://photos.example.com/back.jpg"}]
+    verify(client, key, photos=photos, external_id="L-1")
+    check = next(c for c in verify(client, key, photos=photos, external_id="L-2").json()["risk"]["checks"]
+                 if c["code"] == "duplicate_imagery")
+    assert [m["reference"] for m in check["evidence"]["matches"]] == ["L-1"]
+    assert "on 1 other record" in check["message"]
+    assert check["evidence"]["matches"][0]["seen_at"].endswith("+00:00")
+
+
+def test_messages_read_cleanly_when_the_scan_has_no_price(client, key, engine):
+    engine.comps = [comp(i) for i in range(3)]
+    routing = intake(client, key).json()["routing"]
+    assert routing["reasons"][0]["message"].startswith("The scan gave no price. Fewer than 5")
+    checks = verify(client, key, stated_value=100).json()["risk"]["checks"]
+    low = next(c for c in checks if c["code"] == "price_too_low")
+    assert low["message"] == "Not run: the scan gave no price."
+    assert low["evidence"]["withheld_reason"].startswith("Fewer than 5")
