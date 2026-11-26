@@ -53,12 +53,12 @@
     <div class="panel">
       <span class="eyebrow">What&rsquo;s licensed</span>
       <h3>From the headline number down to the cell.</h3>
-      <ul class="list"><li><strong>GPI headline index</strong> plus sub-indices by category (natural and lab-grown diamonds, colored gemstones, signed jewelry, period jewelry, gold and platinum pieces), species, origin, size band and treatment status</li><li><strong>Monthly price series</strong> with methodology notes and comparable counts per cell, so thin cells are visible</li><li><strong>Quarterly market report,</strong> co-brandable for your client communications</li><li><strong>Raw comparable access</strong> under a stricter license, on request</li></ul>
+      <ul class="list"><li><strong>GPI headline index</strong> plus sub-indices by category: natural and lab-grown diamonds, colored gemstones, signed jewelry, period jewelry, gold and platinum pieces. Species, origin, size band and treatment status to follow.</li><li><strong>Monthly price series</strong> with methodology notes and comparable counts on every value; thin values are flagged, not hidden</li><li><strong>Quarterly market report,</strong> co-brandable for your client communications, on request</li><li><strong>Raw comparable access</strong> under a stricter license, on request</li></ul>
     </div>
     <div class="panel">
       <span class="eyebrow">Credibility</span>
       <h3>An index you can cite.</h3>
-      <ul class="list"><li>A published methodology</li><li>A fixed rebalancing calendar</li><li>A public correction log</li><li>One calculation service and one source of truth, tested against stored snapshots</li></ul>
+      <ul class="list"><li>A published methodology, versioned on every value</li><li>A fixed rebalancing calendar</li><li><strong>Published values are never overwritten.</strong> Corrections are logged with the old value, the new value and the reason.</li><li>One calculation and one source of truth: the feed serves exactly what the GPI publishes</li></ul>
     </div>
   </div>
 </section>
@@ -68,12 +68,48 @@
     <div>
       <span class="eyebrow">Delivery</span>
       <h2 style="margin:14px 0 18px">Read it, pull it or present it.</h2>
-      <ul class="list"><li>A dashboard</li><li>A CSV or API feed</li><li>A PDF quarterly report</li></ul>
+      <ul class="list"><li><strong>An API or CSV feed,</strong> available now</li><li><strong>A PDF quarterly report,</strong> on request</li><li><strong>A dashboard:</strong> on the roadmap</li></ul>
     </div>
     <div>
       <span class="eyebrow">Who licenses it</span>
       <h2 style="margin:14px 0 18px">Beyond the trade floor.</h2>
       <ul class="list"><li>Auction houses and insurers planning sales and price policies</li><li>Banks, pawn and specialty lenders that take jewelry as collateral</li><li>Wealth managers with private-client collections</li><li>Trade press and research</li></ul>
+    </div>
+  </div>
+</section>
+
+<section class="section-alt">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">In the API</span>
+      <h2>Monthly levels, with the evidence count on every value.</h2>
+    </div>
+    <div class="split">
+      <div>
+        <ul class="list"><li><code>GET /index/series</code> lists every series with its latest value.</li><li><code>GET /index/series/{key}</code> returns monthly levels with comparable counts, a thin-data flag, month-on-month and year-on-year change, and whether a value was revised. JSON or CSV.</li><li><code>GET /index/corrections</code> lists every correction with the old and new value and the reason.</li><li>Sandbox keys return example series, so you can build before you license.</li></ul>
+        <div class="code-label" style="margin-top:22px"><span>GET /enterprise/v1/index/series/gpi</span><span>request</span></div>
+<pre class="code"><span class="k">curl</span> "https://api.gemstoneaiapp.com/enterprise/v1/index/series/gpi?start=2026-09" \
+  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span>
+
+<span class="c"># add &amp;format=csv for a spreadsheet</span></pre>
+      </div>
+      <div>
+        <div class="code-label"><span>Response (sandbox example)</span><span>200</span></div>
+<pre class="code code-wrap">{
+  <span class="k">"object"</span>: <span class="s">"index_series"</span>,
+  <span class="k">"key"</span>: <span class="s">"gpi"</span>,
+  <span class="k">"name"</span>: <span class="s">"GemstoneAI Price Index"</span>,
+  <span class="k">"thin_below"</span>: <span class="n">30</span>,
+  <span class="k">"data"</span>: [
+    { <span class="k">"period"</span>: <span class="s">"2026-09"</span>, <span class="k">"level"</span>: <span class="n">103.47</span>, <span class="k">"comp_count"</span>: <span class="n">2953</span>,
+      <span class="k">"thin"</span>: <span class="n">false</span>, <span class="k">"change_mom_pct"</span>: <span class="n">-0.91</span>, <span class="k">"change_yoy_pct"</span>: <span class="n">4.54</span>,
+      <span class="k">"revised"</span>: <span class="n">false</span> },
+    { <span class="k">"period"</span>: <span class="s">"2026-10"</span>, <span class="k">"level"</span>: <span class="n">102.62</span>, <span class="k">"comp_count"</span>: <span class="n">2363</span>,
+      <span class="k">"thin"</span>: <span class="n">false</span>, <span class="k">"change_mom_pct"</span>: <span class="n">-0.82</span>, <span class="k">"change_yoy_pct"</span>: <span class="n">2.58</span>,
+      <span class="k">"revised"</span>: <span class="n">false</span> }
+  ]
+}</pre>
+      </div>
     </div>
   </div>
 </section>

@@ -32,7 +32,7 @@
 <main id="main">
 <section class="hero-product">
   <div class="container">
-    <div class="meta"><span class="eyebrow"><span class="num">04</span>Verify</span><span class="pill pill-early">Early access</span></div>
+    <div class="meta"><span class="eyebrow"><span class="num">04</span>Verify</span><span class="pill pill-live">Pilot available</span></div>
     <h1 style="margin:20px 0 22px">Catch misdescribed jewelry before buyers do.</h1>
     <p class="lede">Verify scores how likely a listing, claim or appraisal is to be wrong, and says why. It is a risk signal for a person or a rules engine, never a certificate of authenticity.</p>
     <div class="hero-actions">
@@ -52,14 +52,15 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Checks</span>
-      <h2>Five ways a listing or claim stops adding up.</h2>
+      <h2>Four ways a listing or claim stops adding up.</h2>
+      <p>Each check reports whether it ran, whether it fired, its weight and its evidence. Weights and thresholds are yours to set.</p>
     </div>
     <div class="split-3">
       <div class="panel"><h3>Price anomaly</h3><p style="color:var(--ink-2)">The asking price or claimed value is far outside the Scan API&rsquo;s price range for the stated metal, stones and maker. Too cheap usually means misdescribed; too high means inflation.</p></div>
-      <div class="panel"><h3>Attribute conflict</h3><p style="color:var(--ink-2)">The stated metal, maker, natural vs lab-grown, treatment or origin doesn&rsquo;t fit the price, or the photos don&rsquo;t match what&rsquo;s described.</p></div>
-      <div class="panel"><h3>Document mismatch</h3><p style="color:var(--ink-2)">Lab report details, hallmarks or maker&rsquo;s marks don&rsquo;t match the listing or the photos.</p></div>
-      <div class="panel"><h3>Duplicate imagery</h3><p style="color:var(--ink-2)">The same photos appear on other listings or prior claims.</p></div>
-      <div class="panel"><h3>Seller pattern</h3><p style="color:var(--ink-2)">Repeated anomalies across one seller&rsquo;s listings (marketplaces).</p></div>
+      <div class="panel"><h3>Identification doubt</h3><p style="color:var(--ink-2)">The scan can&rsquo;t identify the piece, isn&rsquo;t confident, or sees a likely alternative, such as a lab-grown or simulant stone.</p></div>
+      <div class="panel"><h3>Duplicate imagery</h3><p style="color:var(--ink-2)">The same photo was already used in your account on another listing or claim.</p></div>
+      <div class="panel"><h3>Seller pattern</h3><p style="color:var(--ink-2)">The same seller or claimant keeps getting flagged.</p></div>
+      <div class="panel"><h3>On the roadmap</h3><p style="color:var(--ink-2)">Document checks (lab report numbers, hallmarks), field-by-field attribute conflicts, and edited or cropped copies of a photo.</p></div>
     </div>
   </div>
 </section>
@@ -74,7 +75,49 @@
     <div>
       <span class="eyebrow">Delivery</span>
       <h2 style="margin:14px 0 18px">Where your team already works.</h2>
-      <ul class="list"><li>A real-time API at listing or claim submission</li><li>A nightly batch over live inventory</li><li>Webhooks into your trust and safety or claims queue</li></ul>
+      <ul class="list"><li><strong>A real-time API</strong> at listing or claim submission, available now</li><li><strong>A nightly batch</strong> over live inventory and <strong>webhooks</strong> into your trust and safety or claims queue: on the roadmap</li></ul>
+    </div>
+  </div>
+</section>
+
+<section class="section-alt">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">In the API</span>
+      <h2>Check a listing or claim as it&rsquo;s submitted.</h2>
+    </div>
+    <div class="split">
+      <div>
+        <ul class="list"><li>Send the photos and what the listing or claim states: its id, the seller or claimant, the stated value.</li><li>Get a 0&ndash;100 risk score, a suggested action (allow, request lab report, manual review or hold) and every check with its evidence.</li><li>Set your thresholds with <code>PUT /verify/settings</code>. Duplicate photos and seller history are matched only within your own account.</li></ul>
+        <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/verify/checks</span><span>request</span></div>
+<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/verify/checks \
+  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
+  -d <span class="s">'{"photos": [{"url": "https://&hellip;/claim-photo-1.jpg"}],
+       "subject": {"type": "claim",
+         "external_id": "CLM-5512",
+         "seller_id": "policyholder-8812",
+         "stated_value": 14500}}'</span></pre>
+      </div>
+      <div>
+        <div class="code-label"><span>Response (abridged, sandbox example)</span><span>201</span></div>
+<pre class="code code-wrap">{
+  <span class="k">"object"</span>: <span class="s">"verify_check"</span>,
+  <span class="k">"reference"</span>: <span class="s">"CLM-5512"</span>,
+  <span class="k">"risk"</span>: {
+    <span class="k">"risk_score"</span>: <span class="n">50</span>,
+    <span class="k">"action"</span>: <span class="s">"manual_review"</span>,
+    <span class="k">"checks"</span>: [
+      { <span class="k">"code"</span>: <span class="s">"price_too_high"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">35</span>,
+        <span class="k">"message"</span>: <span class="s">"The stated $14,500 is far above the scan's range of $1,800&ndash;$5,200; this can mean inflation."</span> },
+      { <span class="k">"code"</span>: <span class="s">"possible_other_identity"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">15</span>,
+        <span class="k">"message"</span>: <span class="s">"It could be something else: Center stone is a lab-grown diamond (30%)"</span> },
+      <span class="c">/* every other check, with whether it ran */</span>
+    ],
+    <span class="k">"note"</span>: <span class="s">"A risk signal for review, not an authentication or certification."</span>
+  },
+  <span class="k">"scan"</span>: { <span class="c">/* the full scan result */</span> }
+}</pre>
+      </div>
     </div>
   </div>
 </section>

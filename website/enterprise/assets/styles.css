@@ -262,6 +262,10 @@ p code, li code { overflow-wrap: anywhere; }
 .method { font-family: var(--mono); font-size: 0.72rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
 .method-post { color: var(--realized); background: var(--realized-bg); }
 .method-get { color: var(--accent); background: var(--accent-soft); }
+.code-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.method-put { color: var(--asking); background: var(--asking-bg); }
+.table th.group { background: var(--card); color: var(--ink-2); padding-top: 20px; }
+.table th.group code { font-size: 0.74rem; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
 
 /* ── CTA band ────────────────────────────────────────────────────────── */
 

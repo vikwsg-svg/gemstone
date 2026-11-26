@@ -32,7 +32,7 @@
 <main id="main">
 <section class="hero-product">
   <div class="container">
-    <div class="meta"><span class="eyebrow"><span class="num">02</span>Intake</span><span class="pill pill-early">Early access</span></div>
+    <div class="meta"><span class="eyebrow"><span class="num">02</span>Intake</span><span class="pill pill-live">Pilot available</span></div>
     <h1 style="margin:20px 0 22px">Route every jewelry consignment in seconds. Spend specialist hours where they change the outcome.</h1>
     <p class="lede">Intake decides what happens to each consigned piece before a gemologist or jewelry specialist touches it, so expert time goes only where it moves the result.</p>
     <div class="hero-actions">
@@ -58,7 +58,7 @@
     <div class="route-grid">
       <div class="route"><b>List</b><p>Low value, high confidence. Goes straight to listing with prefilled fields.</p></div>
       <div class="route"><b>Review</b><p>A gemologist should look. The reasons are attached so the review is fast.</p></div>
-      <div class="route"><b>Lab</b><p>Value is above your threshold, or natural vs lab-grown, treatment or origin drives the price.</p></div>
+      <div class="route"><b>Lab</b><p>Value is above your threshold, or a lab report would settle a question, such as natural vs lab-grown or treatment, that moves the price.</p></div>
       <div class="route"><b>Decline</b><p>Below your platform&rsquo;s floor.</p></div>
     </div>
   </div>
@@ -69,12 +69,51 @@
     <div class="panel">
       <span class="eyebrow">Inputs</span>
       <h3>What your intake station already captures.</h3>
-      <ul class="list"><li>Multi-angle photos, including hallmarks and maker&rsquo;s marks</li><li>The consignor&rsquo;s description</li><li>Paperwork: lab report, receipt or prior appraisal</li><li>Weight and measurements</li></ul>
+      <ul class="list"><li>Multi-angle photos, including hallmarks and maker&rsquo;s marks</li><li>The consignor&rsquo;s description</li><li>Anything you already know: metal and weight, maker, era, a lab report number</li><li>Your consignment reference, echoed back on every result</li></ul>
     </div>
     <div class="panel">
       <span class="eyebrow">Outputs per item</span>
       <h3>A decision your associates can act on.</h3>
-      <ul class="list"><li><strong>Likely identification</strong> of metal and stones with alternatives and confidence, for example sapphire 82%, spinel 11%, glass 4%</li><li><strong>Value range</strong> from the Scan API</li><li><strong>Prefilled listing fields</strong> marked by confidence. Treatment, origin and maker attribution are suggested, never asserted as fact.</li><li><strong>Discrepancy note</strong> when the photos contradict the consignor&rsquo;s description</li></ul>
+      <ul class="list"><li><strong>Likely identification</strong> of metal and stones with alternatives and confidence, for example sapphire 82%, spinel 11%, glass 4%</li><li><strong>Value range</strong> from the Scan API</li><li><strong>Prefilled listing fields</strong> marked by confidence. Treatment, origin and maker attribution are suggested, never asserted as fact.</li><li><strong>The reasons and the rules used</strong>, logged with the full scan, so every decision can be explained later</li></ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">In the API</span>
+      <h2>One call per item: the scan, then your rules.</h2>
+    </div>
+    <div class="split">
+      <div>
+        <ul class="list"><li>Send the same photos as a scan, plus the consignor&rsquo;s description and your reference.</li><li>Get the decision with coded reasons, the rules that produced it, suggested listing fields and the full scan behind it.</li><li>Change your thresholds with <code>PUT /intake/rules</code>; every later decision records the rules it used.</li></ul>
+        <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/intake/items</span><span>request</span></div>
+<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/intake/items \
+  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
+  -d <span class="s">'{"photos": [{"url": "https://&hellip;/pendant-front.jpg"},
+                  {"url": "https://&hellip;/pendant-back.jpg"}],
+       "consignor_description": "18k gold diamond
+         pendant, inherited",
+       "reference": "CONS-20931"}'</span></pre>
+      </div>
+      <div>
+        <div class="code-label"><span>Response (abridged, sandbox example)</span><span>201</span></div>
+<pre class="code code-wrap">{
+  <span class="k">"object"</span>: <span class="s">"intake_item"</span>,
+  <span class="k">"id"</span>: <span class="s">"int_01M8CM08&hellip;"</span>,
+  <span class="k">"reference"</span>: <span class="s">"CONS-20931"</span>,
+  <span class="k">"routing"</span>: {
+    <span class="k">"decision"</span>: <span class="s">"lab"</span>,
+    <span class="k">"reasons"</span>: [{ <span class="k">"code"</span>: <span class="s">"lab_settles_value"</span>,
+      <span class="k">"message"</span>: <span class="s">"A lab report is suggested, and the open questions move the value between $1,800 and $5,200."</span> }],
+    <span class="k">"rules_applied"</span>: { <span class="k">"list_max_value"</span>: <span class="n">2000</span>, <span class="k">"lab_min_value"</span>: <span class="n">5000</span>, &hellip; },
+    <span class="k">"prefill"</span>: { <span class="k">"title"</span>: { <span class="k">"value"</span>: <span class="s">"18k yellow gold pendant with a round diamond of about 1 ct"</span>,
+                           <span class="k">"confidence"</span>: <span class="n">0.78</span> }, &hellip; }
+  },
+  <span class="k">"scan"</span>: { <span class="c">/* the full scan result */</span> }
+}</pre>
+      </div>
     </div>
   </div>
 </section>
@@ -84,7 +123,7 @@
     <div>
       <span class="eyebrow">Delivery</span>
       <h2 style="margin:14px 0 18px">At the intake station and in the back office.</h2>
-      <ul class="list"><li>An API for your consignment system</li><li>An intake-station web app for associates</li><li>Batch mode for back-of-house queues</li></ul>
+      <ul class="list"><li><strong>An API</strong> for your consignment system, available now</li><li><strong>Your rules, your thresholds:</strong> set and change them through the API at any time</li><li><strong>An intake-station web app</strong> for associates and <strong>batch mode</strong> for back-of-house queues: on the roadmap</li></ul>
     </div>
     <div><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Gemologist hours per 100 items, time from receipt to listing, and the share of List-routed items later corrected by an expert (target under 2%).</p></div></div>
   </div>
@@ -94,7 +133,7 @@
   <div class="container cta-inner">
     <div>
       <h2>Bring Intake to your consignment floor.</h2>
-      <p>Intake is in early access with a small number of resale partners. Tell us about your volumes and we&rsquo;ll scope a pilot.</p>
+      <p>Intake is available for pilots. Tell us about your volumes and we&rsquo;ll scope one around your own consignments.</p>
     </div>
     <div class="cta-actions">
       <a class="btn btn-light" href="pilot.html">Request a pilot</a>

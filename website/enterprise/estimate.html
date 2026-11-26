@@ -53,12 +53,12 @@
     <div class="panel">
       <span class="eyebrow">Inputs</span>
       <h3>What your catalogue already holds.</h3>
-      <ul class="list"><li>Lot description and catalogue fields: metal, stones, maker, period</li><li>Lab report data</li><li>Photos</li><li>Sale context: house, venue, live or online, season</li></ul>
+      <ul class="list"><li>Photos of the lot</li><li>Catalogue fields you already have: metal, stones, maker, period, a lab report number</li><li>Sale context: house, sale, live or online, date</li><li>The lot number, echoed back on every result</li></ul>
     </div>
     <div class="panel">
       <span class="eyebrow">Outputs per lot</span>
       <h3>An estimate a specialist can sign.</h3>
-      <ul class="list"><li><strong>Suggested low and high estimate,</strong> rounded to auction increments</li><li><strong>Suggested reserve</strong> as a percentage of the low estimate, using your house policy</li><li><strong>Realized comps first.</strong> Asking-price comps are clearly separated and weighted lower.</li><li><strong>Sell-through risk:</strong> how comparable lots performed against estimate</li><li><strong>A one-paragraph rationale</strong> to edit into a condition report or consignor letter</li></ul>
+      <ul class="list"><li><strong>Suggested low and high estimate,</strong> rounded to auction increments</li><li><strong>Suggested reserve</strong> as a percentage of the low estimate, using your house policy</li><li><strong>Built only from realized sales,</strong> the middle half of at least five. Asking prices are listed separately and never used for the number.</li><li><strong>A one-paragraph rationale</strong> to edit into a condition report or consignor letter</li><li><strong>Sell-through risk</strong> against past estimates: on the roadmap</li></ul>
     </div>
   </div>
 </section>
@@ -69,12 +69,54 @@
       <span class="eyebrow">Where it works</span>
       <h2 style="margin:14px 0 18px">Built for the lots that stretch your department.</h2>
       <p class="lede">Online and mid-tier sales with $1,000&ndash;$50,000 lots, where specialists are stretched and comparables are dense.</p>
-      <p style="margin-top:16px;color:var(--ink-2)">Top lots, such as important signed pieces, rare origins and large unheated stones, get comparables and context only, with no number, unless at least five qualifying comparables exist.</p>
+      <p style="margin-top:16px;color:var(--ink-2)">Top lots, such as important signed pieces, rare origins and large unheated stones, get comparables and context only, with no number, unless at least five realized sales exist.</p>
     </div>
     <div class="panel">
-      <span class="eyebrow">Consignor-facing variant</span>
+      <span class="eyebrow">Consignor-facing variant &middot; on the roadmap</span>
       <h3>A white-label valuation page for prospective consignors.</h3>
       <p style="color:var(--ink-2)">Send prospects a branded &ldquo;free auction estimate for your jewelry&rdquo; page that feeds your lead pipeline.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section-alt">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">In the API</span>
+      <h2>A starting point a specialist can sign, with the sales behind it.</h2>
+    </div>
+    <div class="split">
+      <div>
+        <ul class="list"><li>Send the lot&rsquo;s photos and catalogue fields; the scan finds the comparables.</li><li>With five or more realized sales you get a low and high estimate rounded to auction increments, the sales used and an editable rationale.</li><li>With fewer you get <code>no_estimate</code> and the reason, with the comparables for reference. No number without realized evidence.</li><li>Set your reserve policy and increments with <code>PUT /estimate/policy</code>.</li></ul>
+        <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/estimate/lots</span><span>request</span></div>
+<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/estimate/lots \
+  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
+  -H <span class="s">"Idempotency-Key: feb-sale-lot-214"</span> \
+  -d <span class="s">'{"photos": [{"url": "https://&hellip;/lot-214.jpg"}],
+       "details": {"item_type": "ring",
+         "metal": {"type": "platinum"}},
+       "lot_number": "214",
+       "sale": {"sale_name": "Fine Jewels Online",
+                "venue": "online"}}'</span></pre>
+      </div>
+      <div>
+        <div class="code-label"><span>Response (abridged, example values)</span><span>201</span></div>
+<pre class="code code-wrap">{
+  <span class="k">"object"</span>: <span class="s">"estimate"</span>,
+  <span class="k">"reference"</span>: <span class="s">"214"</span>,
+  <span class="k">"estimate"</span>: {
+    <span class="k">"status"</span>: <span class="s">"estimated"</span>,
+    <span class="k">"low"</span>: <span class="n">3500</span>, <span class="k">"high"</span>: <span class="n">6000</span>, <span class="k">"reserve"</span>: <span class="n">2500</span>,
+    <span class="k">"reserve_policy_pct"</span>: <span class="n">0.8</span>,
+    <span class="k">"based_on"</span>: { <span class="k">"realized_sales"</span>: <span class="n">7</span>, <span class="k">"median"</span>: <span class="n">4500</span>,
+                  <span class="k">"from"</span>: <span class="s">"2025-03-18"</span>, <span class="k">"to"</span>: <span class="s">"2026-10-02"</span> },
+    <span class="k">"rationale"</span>: <span class="s">"Based on 7 realized sales of comparable items between Mar 2025 and Oct 2026, with a median of $4,500, we suggest an estimate of $3,500&ndash;$6,000. At your reserve policy of 80% of the low estimate, the reserve would be $2,500."</span>,
+    <span class="k">"realized_comparables"</span>: [ &hellip; ],
+    <span class="k">"asking_comparables"</span>: [ <span class="c">/* listed, never used */</span> ]
+  },
+  <span class="k">"scan"</span>: { <span class="c">/* the full scan result */</span> }
+}</pre>
+      </div>
     </div>
   </div>
 </section>

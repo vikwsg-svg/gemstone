@@ -32,7 +32,7 @@
 <main id="main">
 <section class="hero-product">
   <div class="container">
-    <div class="meta"><span class="eyebrow">Developers</span><span class="pill pill-live">Scan API v1</span></div>
+    <div class="meta"><span class="eyebrow">Developers</span><span class="pill pill-live">API v1</span></div>
     <h1 style="margin:20px 0 22px">One versioned REST API, built for systems of record.</h1>
     <p class="lede">Versioned at <code style="font-family:var(--mono);font-size:0.9em">/enterprise/v1</code>, described by an OpenAPI spec, with a sandbox of synthetic jewelry and stones so you can build before your pilot starts.</p>
     <div class="hero-actions">
@@ -46,16 +46,34 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Endpoints</span>
-      <h2>Scan API v1</h2>
-      <p>Base URL <code style="font-family:var(--mono);font-size:0.9em">https://api.gemstoneaiapp.com/enterprise/v1</code></p>
+      <h2>Five products, one API</h2>
+      <p>Base URL <code style="font-family:var(--mono);font-size:0.9em">https://api.gemstoneaiapp.com/enterprise/v1</code>. Intake, Estimate and Verify take the same photos as a scan and return their decision together with the full scan behind it.</p>
     </div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Endpoint</th><th>What it does</th></tr></thead><tbody>
+<tr><th colspan="2" class="group">Scan API &middot; scope <code>scan</code></th></tr>
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans</code></td><td>Scan one piece or loose stone from photos: identification, price and comparables in one result</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/{scan_id}</code></td><td>Retrieve a scan as it was returned, or the result of one still processing</td></tr>
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans/batch</code></td><td>Upload a CSV of items (photo links plus optional details); starts an asynchronous job</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/batch/{job_id}</code></td><td>Batch job status and counts</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/batch/{job_id}/results</code></td><td>Download the results CSV</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Valuations per day for your account</td></tr>
+<tr><th colspan="2" class="group">Intake &middot; scope <code>intake</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items</code></td><td>Scan a consigned item and route it: list, review, lab or decline, with reasons</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items/{id}</code></td><td>Retrieve an intake decision</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/intake/rules</code></td><td>Read or set your routing thresholds</td></tr>
+<tr><th colspan="2" class="group">Estimate &middot; scope <code>estimate</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/estimate/lots</code></td><td>Scan a lot and suggest a pre-sale estimate and reserve from realized sales</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/estimate/lots/{id}</code></td><td>Retrieve an estimate</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/estimate/policy</code></td><td>Read or set your reserve policy and rounding increments</td></tr>
+<tr><th colspan="2" class="group">Verify &middot; scope <code>verify</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks</code></td><td>Scan an item and risk-check a listing, claim or appraisal</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks/{id}</code></td><td>Retrieve a risk check</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/verify/settings</code></td><td>Read or set your risk thresholds</td></tr>
+<tr><th colspan="2" class="group">Index &middot; scope <code>index</code></th></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/series</code></td><td>Every index series with its latest value</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/series/{key}</code></td><td>Monthly levels for one series, as JSON or CSV</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/corrections</code></td><td>Corrections to published values, with reasons</td></tr>
+<tr><th colspan="2" class="group">Account</th></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Scans per day for your account, by product</td></tr>
     </tbody></table></div>
   </div>
 </section>
@@ -65,12 +83,12 @@
     <div>
       <span class="eyebrow">Authentication and sandbox</span>
       <h2 style="margin:14px 0 18px">Two kinds of keys.</h2>
-      <ul class="list"><li><strong><code>gsk_test_</code> keys</strong> return example scan results. Every response says <code>synthetic_data: true</code>.</li><li><strong><code>gsk_live_</code> keys</strong> run against the production engine.</li><li>Send keys as <code>Authorization: Bearer &lt;key&gt;</code>. Keys are scoped per product.</li><li>Errors always have the same shape: <code>{{&quot;error&quot;: {{&quot;code&quot;, &quot;message&quot;}}}}</code>.</li></ul>
+      <ul class="list"><li><strong><code>gsk_test_</code> keys</strong> return example results for every product. Every response says <code>synthetic_data: true</code>.</li><li><strong><code>gsk_live_</code> keys</strong> run against the production engine.</li><li>Send keys as <code>Authorization: Bearer &lt;key&gt;</code>. Keys are scoped per product.</li><li>Errors always have the same shape: <code>{&quot;error&quot;: {&quot;code&quot;, &quot;message&quot;}}</code>.</li></ul>
     </div>
     <div>
       <span class="eyebrow">Safe by design</span>
       <h2 style="margin:14px 0 18px">Retries, versions and floors.</h2>
-      <ul class="list"><li><strong>Idempotency keys</strong> on every POST: a retried request returns the original result and is billed once.</li><li><strong>Versioned results:</strong> every response is stamped with the scan model; pin one per request or per account.</li><li><strong>No guessing:</strong> the price is <code>withheld</code>, with the reason, when the item can&rsquo;t be identified or fewer than five comparables are found.</li><li><strong>Long scans</strong> return <code>202</code> with <code>status: processing</code>; retrieve the scan to get the result.</li><li><strong>Sale or asking price</strong> on every comparable, via <code>price_type</code>.</li></ul>
+      <ul class="list"><li><strong>Idempotency keys</strong> on every POST, for every product: a retried request returns the original result and is billed once.</li><li><strong>Versioned results:</strong> every response is stamped with the scan model; pin one per request or per account.</li><li><strong>No guessing:</strong> the price is <code>withheld</code>, with the reason, when the item can&rsquo;t be identified or fewer than five comparables are found.</li><li><strong>Long scans</strong> return <code>202</code> with <code>status: processing</code>; retrieve the scan to get the result.</li><li><strong>Sale or asking price</strong> on every comparable, via <code>price_type</code>.</li></ul>
     </div>
   </div>
 </section>
