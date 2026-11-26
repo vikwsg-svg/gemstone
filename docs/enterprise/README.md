@@ -315,7 +315,7 @@ check with whether it ran, whether it fired, its weight and its evidence:
 | Check | Fires when | Weight |
 | --- | --- | --- |
 | `price_too_low` | Stated value below 0.5 × the scan's low end | 40 |
-| `price_too_high` | Stated value above 1.5 × the scan's high end | 35 |
+| `price_too_high` | Stated value above 1.5 × the scan's high end | 40 |
 | `unidentified` | The scan could not identify the item | 30 |
 | `identification_uncertain` | Identification confidence below 60% | 20 |
 | `possible_other_identity` | An alternative identification at 20% or more | 15 |

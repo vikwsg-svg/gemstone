@@ -220,6 +220,7 @@ class ScanResponse(BaseModel):
 class BatchJobResponse(BaseModel):
     object: Literal["batch_job"] = "batch_job"
     job_id: str
+    product: Literal["scan", "intake", "verify"] = "scan"
     status: Literal["queued", "running", "completed", "failed"]
     created_at: dt.datetime
     started_at: Optional[dt.datetime] = None
@@ -257,3 +258,53 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+class AccountResponse(BaseModel):
+    object: Literal["account"] = "account"
+    tenant_id: str
+    name: str
+    environment: Literal["live", "sandbox"]
+    scopes: list[str] = Field(description="Products this API key can use.")
+    pinned_model_version: Optional[str] = None
+    key_id: str
+
+
+class WebhookConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(max_length=2048, description="Public https URL that receives events.")
+    events: Optional[list[Literal["intake.item.completed", "verify.check.completed",
+                                  "verify.check.flagged", "batch.completed"]]] = Field(
+        default=None, description="Events to send. Default: all.")
+    rotate_secret: bool = Field(default=False, description="Issue a new signing secret.")
+
+
+class WebhookConfigResponse(BaseModel):
+    object: Literal["webhook_endpoint"] = "webhook_endpoint"
+    id: str
+    url: str
+    events: list[str]
+    active: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    secret: Optional[str] = Field(
+        default=None, description="The signing secret. Returned only when created or rotated.")
+
+
+class WebhookDeliveryOut(BaseModel):
+    id: str = Field(description="The event id, also sent as GemstoneAI-Event-Id.")
+    event_type: str
+    status: Literal["pending", "delivered", "failed"]
+    attempts: int
+    last_status_code: Optional[int] = None
+    last_error: Optional[str] = None
+    created_at: dt.datetime
+    last_attempt_at: Optional[dt.datetime] = None
+    delivered_at: Optional[dt.datetime] = None
+
+
+class WebhookDeliveryList(BaseModel):
+    object: Literal["list"] = "list"
+    data: list[WebhookDeliveryOut]
+

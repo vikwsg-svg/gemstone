@@ -8,7 +8,7 @@ Verify runs these checks against what the subject states:
 | check                    | fires when                                                   | weight |
 | ------------------------ | ------------------------------------------------------------ | ------ |
 | price_too_low            | stated value < price_low_ratio x the scan's low end          | 40     |
-| price_too_high           | stated value > price_high_ratio x the scan's high end        | 35     |
+| price_too_high           | stated value > price_high_ratio x the scan's high end        | 40     |
 | unidentified             | the scan could not identify the item                         | 30     |
 | identification_uncertain | identification confidence below 60%                          | 20     |
 | possible_other_identity  | an alternative identification has probability >= 20%        | 15     |
@@ -18,12 +18,16 @@ Verify runs these checks against what the subject states:
 Risk score = sum of fired weights, capped at 100. Suggested action: hold at
 ``hold_at`` and above, manual_review at ``review_at`` and above,
 request_lab_report when an identification check fired, otherwise allow.
+Pilot metric: precision of the top 5% of checks by risk score, i.e. the share
+a reviewer confirmed as real problems, and the stated value of what was caught.
+
 Duplicate photos are matched by exact fingerprint (sha256) within the
 account only; customer data never crosses accounts. Uploaded photos are
 fingerprinted by their bytes, linked photos by their URL, so a re-encoded or
 cropped copy is not caught (perceptual matching needs the backend).
 """
 
+import math
 from datetime import timedelta, timezone
 from typing import Literal, Optional
 
@@ -31,17 +35,19 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 
 from enterprise.models import PhotoFingerprint, ProductRecord
-from enterprise.products.common import EvalContext, ProductHandler
+from enterprise.products.common import EvalContext, ProductHandler, rate
 
 WEIGHTS = {
     "price_too_low": 40,
-    "price_too_high": 35,
+    "price_too_high": 40,
     "unidentified": 30,
     "identification_uncertain": 20,
     "possible_other_identity": 15,
     "duplicate_imagery": 40,
     "seller_pattern": 25,
 }
+ACTIONS = ("allow", "request_lab_report", "manual_review", "hold")
+TOP_SHARE = 0.05
 IDENTIFICATION_CHECKS = ("unidentified", "identification_uncertain", "possible_other_identity")
 UNCERTAIN_BELOW = 0.6
 ALTERNATIVE_AT = 0.2
@@ -92,8 +98,57 @@ class VerifyHandler(ProductHandler):
     product = "verify"
     object_name = "verify_check"
     id_prefix = "ver"
+    path = "verify/checks"
     result_key = "risk"
     settings_model = VerifySettings
+    review_outcomes = ("confirmed", "cleared")
+    summary_columns = ("subject_type", "seller_id", "stated_value", "stated_currency",
+                       "risk_score", "action", "fired_checks")
+
+    def summarize(self, record: ProductRecord, block: dict) -> dict:
+        subject = block.get("subject") or {}
+        return {"subject_type": subject.get("type"), "seller_id": subject.get("seller_id"),
+                "stated_value": subject.get("stated_value"),
+                "stated_currency": subject.get("currency"),
+                "risk_score": block.get("risk_score"), "action": block.get("action"),
+                "fired_checks": [c["code"] for c in block.get("checks", []) if c["fired"]]}
+
+    def agrees(self, record: ProductRecord, review_outcome: str) -> bool:
+        return (review_outcome == "confirmed") == (record.outcome != "allow")
+
+    def events(self, record: ProductRecord) -> list[str]:
+        return ["verify.check.completed"] + (["verify.check.flagged"]
+                                             if record.outcome != "allow" else [])
+
+    def stats(self, rows: list[ProductRecord]) -> dict:
+        by_action = {a: sum(r.outcome == a for r in rows) for a in ACTIONS}
+        flagged = [r for r in rows if r.outcome != "allow"]
+        reviewed_flags = [r for r in flagged if r.review_outcome]
+        confirmed = [r for r in rows if r.review_outcome == "confirmed"]
+        top_n = math.ceil(len(rows) * TOP_SHARE)
+        top = sorted(rows, key=lambda r: (-(r.score or 0), r.created_at))[:top_n]
+        top_reviewed = [r for r in top if r.review_outcome]
+        value: dict[str, float] = {}
+        for r in confirmed:
+            subject = r.request_payload["product_input"]["subject"]
+            if subject.get("stated_value") is not None:
+                cur = subject.get("currency") or "USD"
+                value[cur] = round(value.get(cur, 0) + subject["stated_value"], 2)
+        return {
+            "checks": len(rows),
+            "by_action": by_action,
+            "flagged": len(flagged),
+            "flagged_reviewed": len(reviewed_flags),
+            "confirmed": len(confirmed),
+            "cleared": sum(r.review_outcome == "cleared" for r in rows),
+            "flag_precision": rate(sum(r.review_outcome == "confirmed" for r in reviewed_flags),
+                                   len(reviewed_flags)),
+            "top_flags": {"share": TOP_SHARE, "count": len(top), "reviewed": len(top_reviewed),
+                          "confirmed": sum(r.review_outcome == "confirmed" for r in top_reviewed),
+                          "precision": rate(sum(r.review_outcome == "confirmed" for r in top_reviewed),
+                                            len(top_reviewed))},
+            "confirmed_stated_value": value,
+        }
 
     def evaluate(self, ctx: EvalContext) -> tuple[dict, Optional[str], Optional[int]]:
         cfg = VerifySettings.model_validate(ctx.settings)

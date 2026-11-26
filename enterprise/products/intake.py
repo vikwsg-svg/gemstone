@@ -15,6 +15,9 @@ rules and logs the decision with its reasons and the rules it used:
 
 Prefilled listing fields are suggestions from the scan. Treatment, origin and
 maker attribution are never filled in as fact.
+
+Pilot metric: of the items routed to ``list`` that a specialist later
+reviewed, the share whose final decision was something else (target under 2%).
 """
 
 import re
@@ -22,8 +25,10 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from enterprise.products.common import EvalContext, ProductHandler
+from enterprise.models import ProductRecord
+from enterprise.products.common import EvalContext, ProductHandler, rate
 
+DECISIONS = ("list", "review", "lab", "decline")
 _LAB_WORDS = re.compile(r"\blab\b|\blaboratory\b|grading report", re.IGNORECASE)
 
 
@@ -61,8 +66,36 @@ class IntakeHandler(ProductHandler):
     product = "intake"
     object_name = "intake_item"
     id_prefix = "int"
+    path = "intake/items"
     result_key = "routing"
     settings_model = IntakeRules
+    review_outcomes = DECISIONS
+    summary_columns = ("decision", "reason_codes")
+
+    def summarize(self, record: ProductRecord, block: dict) -> dict:
+        return {"decision": block.get("decision"),
+                "reason_codes": [r["code"] for r in block.get("reasons", [])]}
+
+    def agrees(self, record: ProductRecord, review_outcome: str) -> bool:
+        return review_outcome == record.outcome
+
+    def events(self, record: ProductRecord) -> list[str]:
+        return ["intake.item.completed"]
+
+    def stats(self, rows: list[ProductRecord]) -> dict:
+        by_decision = {d: sum(r.outcome == d for r in rows) for d in DECISIONS}
+        reviewed = [r for r in rows if r.review_outcome]
+        listed = [r for r in reviewed if r.outcome == "list"]
+        corrected = [r for r in listed if r.review_outcome != "list"]
+        return {
+            "items": len(rows),
+            "by_decision": by_decision,
+            "reviewed": len(reviewed),
+            "agreement_rate": rate(sum(r.review_outcome == r.outcome for r in reviewed), len(reviewed)),
+            "list_routed_reviewed": len(listed),
+            "list_routed_corrected": len(corrected),
+            "list_correction_rate": rate(len(corrected), len(listed)),
+        }
 
     def evaluate(self, ctx: EvalContext) -> tuple[dict, Optional[str], Optional[int]]:
         rules = IntakeRules.model_validate(ctx.settings)

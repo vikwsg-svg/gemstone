@@ -1,5 +1,7 @@
 """Shared helpers for enterprise tests."""
 
+import httpx
+
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -117,3 +119,20 @@ def scan_body(**overrides) -> dict:
     body = {"photos": photo_urls(1)}
     body.update(overrides)
     return {k: v for k, v in body.items() if v is not None}
+
+
+class HookRecorder:
+    """A webhook receiver: records each delivery and answers with ``status``."""
+
+    def __init__(self):
+        self.requests: list[httpx.Request] = []
+        self.status = 200
+        self.transport = httpx.MockTransport(self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return httpx.Response(self.status)
+
+    def events(self) -> list[str]:
+        return [r.headers["GemstoneAI-Event-Type"] for r in self.requests]
+

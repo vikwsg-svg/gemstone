@@ -17,6 +17,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Optional
 
+import httpx
 from fastapi import FastAPI
 
 from enterprise import __version__
@@ -29,6 +30,7 @@ from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
 from enterprise.routes_products import router as products_router
+from enterprise.routes_webhooks import router as webhooks_router
 from enterprise.settings import EnterpriseSettings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,7 @@ def create_enterprise_app(
     sandbox_engine: Optional[ScanEngine] = None,
     clock: Optional[Callable[[], datetime]] = None,
     sleep: Optional[Callable[[float], None]] = None,
+    webhook_transport: Optional[httpx.BaseTransport] = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     state = AppState(
@@ -88,6 +91,7 @@ def create_enterprise_app(
     )
     if sleep is not None:
         state.sleep = sleep
+    state.webhook_transport = webhook_transport
     app = FastAPI(
         title="GemstoneAI Enterprise API",
         version=__version__,
@@ -96,6 +100,7 @@ def create_enterprise_app(
             {"name": "Scan API", "description": "Scan jewelry and loose stones: identify and price."},
             {"name": "Intake", "description": "Route consigned items: list, review, lab or decline."},
             {"name": "Verify", "description": "Risk signals for listings, claims and appraisals."},
+            {"name": "Webhooks", "description": "Be told when results are ready, instead of polling."},
             {"name": "Account", "description": "Usage and account information."},
         ],
         openapi_url="/openapi.json",
@@ -106,6 +111,7 @@ def create_enterprise_app(
     install_error_handlers(app)
     app.include_router(router)
     app.include_router(products_router)
+    app.include_router(webhooks_router)
     return app
 
 

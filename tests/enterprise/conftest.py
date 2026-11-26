@@ -5,7 +5,7 @@ from enterprise.app import create_app
 from enterprise.auth import create_tenant, issue_api_key
 from enterprise.db import Database
 from enterprise.settings import EnterpriseSettings
-from tests.enterprise.helpers import Clock, FakeScanEngine, TenantKey
+from tests.enterprise.helpers import Clock, FakeScanEngine, HookRecorder, TenantKey
 
 
 @pytest.fixture
@@ -31,8 +31,14 @@ def engine() -> FakeScanEngine:
 
 
 @pytest.fixture
-def app(db, settings, engine, clock):
-    return create_app(settings, db=db, live_engine=engine, clock=clock, sleep=lambda s: None)
+def hooks() -> HookRecorder:
+    return HookRecorder()
+
+
+@pytest.fixture
+def app(db, settings, engine, clock, hooks):
+    return create_app(settings, db=db, live_engine=engine, clock=clock, sleep=lambda s: None,
+                      webhook_transport=hooks.transport)
 
 
 @pytest.fixture

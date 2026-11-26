@@ -30,6 +30,7 @@ from enterprise.metering import usage_for
 from enterprise.models import BatchJob, Scan
 from enterprise.scan import ScanService
 from enterprise.schemas import (
+    AccountResponse,
     BatchJobResponse,
     ErrorResponse,
     ScanRequest,
@@ -138,9 +139,15 @@ def get_scan(
 # ── Batch ────────────────────────────────────────────────────────────────────
 
 
+BATCH_PATHS = {"scan": "/scans/batch", "intake": "/intake/items/batch",
+               "verify": "/verify/checks/batch"}
+
+
 def _job_body(job: BatchJob, root_path: str) -> dict:
+    product = job.product or "scan"
     return BatchJobResponse(
         job_id=job.id,
+        product=product,
         status=job.status,
         created_at=job.created_at,
         started_at=job.started_at,
@@ -152,19 +159,73 @@ def _job_body(job: BatchJob, root_path: str) -> dict:
         unpriced_rows=job.unpriced_rows,
         failed_rows=job.failed_rows,
         results_url=(
-            f"{root_path}/scans/batch/{job.id}/results" if job.status == "completed" else None
+            f"{root_path}{BATCH_PATHS[product]}/{job.id}/results"
+            if job.status == "completed" else None
         ),
         error=job.error,
     ).model_dump(mode="json")
 
 
-def _get_job(db: Session, principal: Principal, job_id: str) -> BatchJob:
+def get_job(db: Session, principal: Principal, job_id: str, product: str = "scan") -> BatchJob:
     job = db.scalars(
-        select(BatchJob).where(BatchJob.id == job_id, BatchJob.tenant_id == principal.tenant.id)
+        select(BatchJob).where(BatchJob.id == job_id, BatchJob.tenant_id == principal.tenant.id,
+                               BatchJob.product == product)
     ).first()
     if job is None:
         raise ApiError(404, "batch_job_not_found", "No batch job with this id exists.")
     return job
+
+
+def submit_batch(product: str, request: Request, background: BackgroundTasks, file: UploadFile,
+                 model_version: Optional[str], idempotency_key: Optional[str],
+                 principal: Principal, db: Session, state: AppState) -> JSONResponse:
+    """Create a batch job for any product (shared by the Scan API, Intake and Verify routes)."""
+    limit = state.settings.batch_max_bytes
+    raw = file.file.read(limit + 1)
+    if len(raw) > limit:
+        raise ApiError(413, "file_too_large", f"The CSV must be at most {limit} bytes.")
+    text = decode_csv(raw)
+    rows = parse_rows(text, model_version=model_version, max_rows=state.settings.batch_max_rows,
+                      product=product)
+    if not rows:
+        raise ApiError(422, "invalid_csv", "The CSV has a header but no rows.")
+    ScanService(state, db).engine_for(principal.tenant)  # fail fast if scans are not configured
+
+    def handler() -> tuple[int, dict]:
+        job = BatchJob(
+            id=new_id("bat"),
+            tenant_id=principal.tenant.id,
+            api_key_id=principal.api_key.id,
+            product=product,
+            status="queued",
+            model_version=model_version or principal.tenant.pinned_model_version,
+            total_rows=len(rows),
+            input_csv=text,
+            created_at=state.clock(),
+        )
+        db.add(job)
+        db.flush()
+        return 202, _job_body(job, request.scope.get("root_path", ""))
+
+    result = run_idempotent(
+        db,
+        tenant_id=principal.tenant.id,
+        endpoint=f"POST {BATCH_PATHS[product]}",
+        key=idempotency_key,
+        payload={"csv_sha256": hashlib.sha256(raw).hexdigest(), "model_version": model_version},
+        handler=handler,
+        now=state.clock(),
+        ttl=timedelta(hours=state.settings.idempotency_ttl_hours),
+    )
+    job_id = result.body["job_id"]
+    if result.replayed:
+        # Replays report the job's current state rather than the stale snapshot.
+        body = _job_body(get_job(db, principal, job_id, product), request.scope.get("root_path", ""))
+    else:
+        body = result.body
+        background.add_task(process_batch_job, state, job_id)
+    return JSONResponse(status_code=result.status_code, content=body,
+                        headers=_replay_headers(result.replayed))
 
 
 @router.post(
@@ -195,50 +256,8 @@ def create_batch(
     db: Session = Depends(get_db),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    limit = state.settings.batch_max_bytes
-    raw = file.file.read(limit + 1)
-    if len(raw) > limit:
-        raise ApiError(413, "file_too_large", f"The CSV must be at most {limit} bytes.")
-    text = decode_csv(raw)
-    rows = parse_rows(text, model_version=model_version, max_rows=state.settings.batch_max_rows)
-    if not rows:
-        raise ApiError(422, "invalid_csv", "The CSV has a header but no rows.")
-    ScanService(state, db).engine_for(principal.tenant)  # fail fast if scans are not configured
-
-    def handler() -> tuple[int, dict]:
-        job = BatchJob(
-            id=new_id("bat"),
-            tenant_id=principal.tenant.id,
-            api_key_id=principal.api_key.id,
-            status="queued",
-            model_version=model_version or principal.tenant.pinned_model_version,
-            total_rows=len(rows),
-            input_csv=text,
-            created_at=state.clock(),
-        )
-        db.add(job)
-        db.flush()
-        return 202, _job_body(job, request.scope.get("root_path", ""))
-
-    result = run_idempotent(
-        db,
-        tenant_id=principal.tenant.id,
-        endpoint="POST /scans/batch",
-        key=idempotency_key,
-        payload={"csv_sha256": hashlib.sha256(raw).hexdigest(), "model_version": model_version},
-        handler=handler,
-        now=state.clock(),
-        ttl=timedelta(hours=state.settings.idempotency_ttl_hours),
-    )
-    job_id = result.body["job_id"]
-    if result.replayed:
-        # Replays report the job's current state rather than the stale snapshot.
-        body = _job_body(_get_job(db, principal, job_id), request.scope.get("root_path", ""))
-    else:
-        body = result.body
-        background.add_task(process_batch_job, state, job_id)
-    return JSONResponse(status_code=result.status_code, content=body,
-                        headers=_replay_headers(result.replayed))
+    return submit_batch("scan", request, background, file, model_version, idempotency_key,
+                        principal, db, state)
 
 
 @router.get(
@@ -254,7 +273,7 @@ def get_batch(
     principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
-    return JSONResponse(content=_job_body(_get_job(db, principal, job_id),
+    return JSONResponse(content=_job_body(get_job(db, principal, job_id),
                                           request.scope.get("root_path", "")))
 
 
@@ -275,7 +294,14 @@ def get_batch_results(
     principal: Principal = Depends(require_scope("scan")),
     db: Session = Depends(get_db),
 ) -> Response:
-    job = _get_job(db, principal, job_id)
+    return batch_results(get_job(db, principal, job_id))
+
+
+def batch_status(request: Request, job: BatchJob) -> JSONResponse:
+    return JSONResponse(content=_job_body(job, request.scope.get("root_path", "")))
+
+
+def batch_results(job: BatchJob) -> Response:
     if job.status != "completed" or job.results_csv is None:
         raise ApiError(409, "batch_not_completed", f"The job is {job.status}; results are not ready.")
     return Response(
@@ -286,6 +312,16 @@ def get_batch_results(
 
 
 # ── Account ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/account", response_model=AccountResponse, responses=_ERRORS, tags=["Account"],
+            summary="The account and API key making the request")
+def get_account(principal: Principal = Depends(get_principal)) -> AccountResponse:
+    tenant = principal.tenant
+    return AccountResponse(tenant_id=tenant.id, name=tenant.name, environment=tenant.environment,
+                           scopes=sorted(principal.scopes),
+                           pinned_model_version=tenant.pinned_model_version,
+                           key_id=principal.api_key.id)
 
 
 @router.get(

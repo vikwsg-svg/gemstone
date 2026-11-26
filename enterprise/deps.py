@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import Request
+import httpx
 from sqlalchemy.orm import Session
 
 from enterprise.db import Database
@@ -23,6 +24,8 @@ class AppState:
     live_engine: Optional[ScanEngine]
     clock: Callable[[], datetime] = field(default=utcnow)
     sleep: Callable[[float], None] = field(default=time.sleep)
+    # Tests inject an httpx.MockTransport; production uses the default network transport.
+    webhook_transport: Optional[httpx.BaseTransport] = None
 
 
 def get_state(request: Request) -> AppState:

@@ -6,6 +6,7 @@ Operator CLI (there is no admin console in v1).
     python -m enterprise.cli revoke-key --key-id key_...
     python -m enterprise.cli pin-model --tenant ten_... --version <scan model version>
     python -m enterprise.cli export-openapi --output docs/enterprise/openapi.json
+    python -m enterprise.cli webhooks-dispatch      # from cron, every minute
 
 Uses ENTERPRISE_DATABASE_URL. Schema changes go through Alembic
 (``alembic -c enterprise/alembic.ini upgrade head``); ``init-db`` exists only
@@ -119,6 +120,22 @@ def export_openapi_cmd(output: str) -> None:
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(spec, indent=2, sort_keys=False) + "\n")
     click.echo(f"Wrote {output}")
+
+
+@cli.command("webhooks-dispatch")
+@click.option("--limit", default=500, show_default=True)
+def webhooks_dispatch_cmd(limit: int) -> None:
+    """Send pending webhook events (retries included). Run from cron or a worker."""
+    from enterprise.app import live_engine_from_settings
+    from enterprise.deps import AppState
+    from enterprise.engine.sandbox import SandboxScanEngine
+    from enterprise.webhooks import dispatch_pending
+
+    settings = get_settings()
+    state = AppState(settings=settings, db=Database(settings.database_url),
+                     sandbox_engine=SandboxScanEngine(),
+                     live_engine=live_engine_from_settings(settings))
+    click.echo(json.dumps({"delivered": dispatch_pending(state, limit=limit)}))
 
 
 if __name__ == "__main__":

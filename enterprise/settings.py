@@ -33,6 +33,11 @@ class EnterpriseSettings(BaseSettings):
     batch_max_rows: int = Field(default=5000, ge=1)
     batch_max_bytes: int = Field(default=5_000_000, ge=1)
 
+    # Webhooks. Private and loopback hosts are refused unless this is set (local development).
+    webhook_allow_private_hosts: bool = False
+    webhook_timeout_seconds: float = Field(default=10.0, gt=0)
+    webhook_max_attempts: int = Field(default=5, ge=1)
+
     # Used as the server URL in the exported OpenAPI document.
     public_base_url: str = "https://api.gemstoneaiapp.com/enterprise/v1"
 
