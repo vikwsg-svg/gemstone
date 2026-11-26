@@ -28,6 +28,7 @@ from enterprise.engine.sandbox import SandboxScanEngine
 from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
+from enterprise.routes_index import router as index_router
 from enterprise.routes_products import router as products_router
 from enterprise.settings import EnterpriseSettings, get_settings
 
@@ -36,17 +37,23 @@ logger = logging.getLogger(__name__)
 API_DESCRIPTION = """
 The GemstoneAI Enterprise API: the pricing and verification layer for jewelry.
 
-The **Scan API** is today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos of
-a piece of jewelry or a loose stone (plus anything you already know) and get the whole result in
-one response: the identification (observations, alternatives, open questions, next evidence),
-the price context, and the comparables behind it, each tagged as an asking price or a realized
-sale.
+* **Scan API** (`/scans`): today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos
+  of a piece of jewelry or a loose stone (plus anything you already know) and get the
+  identification, the price context and the comparables behind it, each tagged as an asking price
+  or a realized sale.
+* **Intake** (`/intake`): the scan plus your routing rules: list, review, lab or decline.
+* **Estimate** (`/estimate`): the scan plus a pre-sale estimate and reserve built only from realized
+  sales.
+* **Verify** (`/verify`): the scan plus risk checks on a listing, claim or appraisal.
+* **Index** (`/index`): the GemstoneAI Price Index (GPI) and sub-indices as a monthly feed.
+
+Conventions:
 
 * **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.
-* **Sandbox:** `gsk_test_` keys return example scan results; responses carry `synthetic_data: true`.
+* **Sandbox:** `gsk_test_` keys return example results; responses carry `synthetic_data: true`.
 * **No guessing:** no price with fewer than 5 comparables, or when the item can't be identified;
   the reason is always given.
-* **Audit:** every scan is stored and retrievable by `scan_id`.
+* **Audit:** every result is stored and retrievable by id, with the scan it was based on.
 * **Versioned:** every result is stamped with the scan `model_version`; you can pin one.
 * **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.
 """
@@ -94,6 +101,7 @@ def create_enterprise_app(
             {"name": "Intake", "description": "Route consigned items: list, review, lab or decline."},
             {"name": "Estimate", "description": "Pre-sale estimates and reserves from realized sales."},
             {"name": "Verify", "description": "Risk signals for listings, claims and appraisals."},
+            {"name": "Index", "description": "The GemstoneAI Price Index (GPI) and sub-indices."},
             {"name": "Account", "description": "Usage and account information."},
         ],
         openapi_url="/openapi.json",
@@ -104,6 +112,7 @@ def create_enterprise_app(
     install_error_handlers(app)
     app.include_router(router)
     app.include_router(products_router)
+    app.include_router(index_router)
     return app
 
 
