@@ -15,28 +15,18 @@ class EnterpriseSettings(BaseSettings):
     # Storage. Defaults to a local SQLite file for development; production uses Postgres.
     database_url: str = "sqlite:///./data/enterprise.db"
 
-    # Pricing engine used for *live* tenants. Sandbox tenants always use the
-    # synthetic sandbox engine.
-    #   none    -> live valuations return 503 engine_unavailable (safe default)
-    #   remote  -> HTTP adapter to the V2 comps engine (see enterprise/engine/remote.py)
-    #   sandbox -> synthetic data for local development; responses are flagged synthetic
-    engine_backend: Literal["none", "remote", "sandbox"] = "none"
-    engine_url: Optional[str] = None
-    engine_api_key: Optional[str] = None
-    engine_timeout_seconds: float = 5.0
-
-    # Identify engine (the scan's first step: photos -> what the item is) for live
-    # tenants. Sandbox tenants always use the simulated sandbox identifier.
-    identify_backend: Literal["none", "remote", "sandbox"] = "none"
-    identify_url: Optional[str] = None
-    identify_api_key: Optional[str] = None
-    identify_timeout_seconds: float = 20.0
-    # How long a request waits for a pending identification before answering 202.
-    identify_wait_seconds: float = 8.0
-    identify_poll_interval_seconds: float = 1.0
-
-    # Overrides the registry's "current" model version when set.
-    default_model_version: Optional[str] = None
+    # The GemstoneAI scan used for *live* tenants. Sandbox tenants always get the
+    # example results of the sandbox engine.
+    #   none    -> live scans return 503 scan_unavailable (safe default)
+    #   remote  -> HTTP adapter to the backend's scan (see enterprise/engine/remote.py)
+    #   sandbox -> example results for local development; responses are flagged synthetic
+    scan_backend: Literal["none", "remote", "sandbox"] = "none"
+    scan_url: Optional[str] = None
+    scan_api_key: Optional[str] = None
+    scan_timeout_seconds: float = 20.0
+    # How long POST /scans waits for a running scan before answering "processing".
+    scan_wait_seconds: float = 8.0
+    scan_poll_interval_seconds: float = 1.0
 
     idempotency_ttl_hours: int = Field(default=24, ge=1)
 

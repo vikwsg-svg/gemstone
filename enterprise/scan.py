@@ -1,218 +1,159 @@
 """
-The Scan API: the business version of a GemstoneAI scan result.
+The Scan API: today's GemstoneAI scan result, enhanced for businesses.
 
-A scan is the two steps of the consumer scan, for systems of record:
+One call runs the scan (identification + price context) and fetches its
+comparables, so the customer gets the whole result at once. Around it the
+enterprise layer adds: API keys, audit storage (``ent_scans``), safe retries,
+usage metering, batch, a model version stamp (and pin), and one rule:
 
-1. **Identify**: 1-5 photos (and anything the customer already knows) go to the
-   identify engine, which returns a preliminary identification with
-   observations, alternatives, open questions and the next evidence that
-   would settle them. Details the customer states always win over what the
-   photos suggest. With no photos, the stated details are the identification.
-2. **Price**: the identified item is valued by the comps engine: price range,
-   Raw/Make/Market breakdown for pieces, comparables tagged realized or asking,
-   confidence with reason codes, and scenarios for unknowns.
+    No price with fewer than 5 comparables. The price context is withheld
+    (with the reason) and the comparables that were found are still returned.
 
-Outcomes (``status``): ``priced``; ``insufficient_data`` (fewer than 5
-qualifying comps, no price); ``unidentified`` (the item could not be
-identified well enough to price, no price); ``processing`` (identification is
-still running: retrieve the scan later with GET /scans/{scan_id}).
-
-Every scan is stored with its inputs (photo metadata, never image bytes),
-identification, comps, model version and output, and metered once it
-completes.
+If the scan is still running after a short wait, the response is
+``processing`` and ``GET /scans/{scan_id}`` returns the finished result.
+Image bytes are passed to the scan and never stored: a scan keeps each
+photo's sha256, media type, size and URL.
 """
 
-from collections.abc import Mapping
-from typing import Any, Optional
+from typing import Optional
 
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from enterprise.auth import Principal
 from enterprise.deps import AppState
 from enterprise.engine.base import (
-    Identification,
-    IdentificationUnavailable,
-    IdentifyEngine,
-    PendingIdentification,
-    PhotoRef,
+    AnalysisResult,
+    PendingAnalysis,
+    ScanEngine,
+    ScanUnavailable,
+    UnsupportedModelVersion,
 )
-from enterprise.engine.sandbox_identify import SandboxIdentifier
 from enterprise.errors import ApiError
 from enterprise.ids import new_id
 from enterprise.metering import record_scan
 from enterprise.models import Scan, Tenant
-from enterprise.schemas import ITEM_FIELDS, ItemFields, ScanRequest, ScanResponse
-from enterprise.valuation.model_versions import ModelVersion
-from enterprise.valuation.service import ValuationService
+from enterprise.schemas import MIN_COMPARABLES, ScanRequest, ScanResponse
 
 PRODUCT = "scan"
-# Below this identification confidence a scan is not priced (status unidentified).
-MIN_IDENTIFICATION_CONFIDENCE = 0.40
-SANDBOX_IDENTIFY_WARNING = (
-    "Sandbox: identification is simulated; the same photos always return the same "
-    "synthetic result."
+SANDBOX_WARNING = (
+    "Sandbox: this is an example scan result; it does not reflect the photos and its prices "
+    "are not market values."
 )
-_LOOSE_STONE_DROPS = ("metal", "brand", "signed", "era", "condition", "total_weight_grams")
-
-
-def format_validation_error(exc: ValidationError) -> str:
-    parts = []
-    for err in exc.errors():
-        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "__root__")
-        msg = err.get("msg", "invalid")
-        parts.append(f"{loc}: {msg}" if loc else msg)
-    return "; ".join(parts)
-
-
-def merge_item(identified: Mapping[str, Any], stated: Mapping[str, Any]
-               ) -> tuple[dict[str, Any], dict[str, str]]:
-    """Stated details override identified ones. Returns (item fields, field sources)."""
-    merged = {k: v for k, v in identified.items() if k in ITEM_FIELDS and v not in (None, [], {})}
-    sources = {k: "identified" for k in merged}
-    for key, value in stated.items():
-        merged[key] = value
-        sources[key] = "stated"
-    if merged.get("item_type") == "loose_stone":
-        # A stated loose stone drops the setting the photos may have suggested.
-        for key in _LOOSE_STONE_DROPS:
-            if sources.get(key) == "identified":
-                merged.pop(key)
-                sources.pop(key)
-        stones = merged.get("stones") or []
-        if sources.get("stones") == "identified" and len(stones) > 1:
-            center = next((s for s in stones if s.get("role") == "center"), None)
-            pick = center or max(stones, key=lambda s: s.get("carat", 0) / max(s.get("count", 1), 1))
-            merged["stones"] = [{**pick, "role": "center", "count": 1}]
-    return merged, sources
+FLOOR_REASON = (
+    f"Fewer than {MIN_COMPARABLES} comparables were found, so no price is given. "
+    "The comparables that were found are listed."
+)
 
 
 class ScanService:
     def __init__(self, state: AppState, session: Session):
         self.state = state
         self.session = session
-        self.pricing = ValuationService(state, session)
 
-    # ── engines ──────────────────────────────────────────────────────────────
-
-    def identifier_for(self, tenant: Tenant) -> IdentifyEngine:
+    def engine_for(self, tenant: Tenant) -> ScanEngine:
         if tenant.environment == "sandbox":
-            return self.state.sandbox_identifier or SandboxIdentifier()
-        if self.state.live_identifier is None:
-            raise ApiError(
-                503,
-                "identification_unavailable",
-                "Photo identification is not configured for this environment. "
-                "Send the item's details instead of photos.",
-            )
-        return self.state.live_identifier
+            return self.state.sandbox_engine
+        if self.state.live_engine is None:
+            raise ApiError(503, "scan_unavailable",
+                           "The scan service is not configured for this environment.")
+        return self.state.live_engine
 
-    def _identify(self, identifier: IdentifyEngine, photos: list[PhotoRef],
-                  stated: Mapping[str, Any], wait_seconds: float
-                  ) -> "Identification | PendingIdentification":
-        try:
-            result = identifier.identify(photos, stated)
-            waited = 0.0
-            interval = self.state.settings.identify_poll_interval_seconds
-            while isinstance(result, PendingIdentification) and waited < wait_seconds:
-                self.state.sleep(interval)
-                waited += interval
-                result = identifier.poll(result.ref)
-            return result
-        except IdentificationUnavailable as exc:
-            raise ApiError(
-                503, "identification_unavailable",
-                "The identification service is temporarily unavailable.",
-            ) from exc
+    # ── engine calls ─────────────────────────────────────────────────────────
+
+    def _wait(self, engine: ScanEngine, result: "AnalysisResult | PendingAnalysis",
+              wait_seconds: float) -> "AnalysisResult | PendingAnalysis":
+        waited = 0.0
+        interval = self.state.settings.scan_poll_interval_seconds
+        while isinstance(result, PendingAnalysis) and waited < wait_seconds:
+            self.state.sleep(interval)
+            waited += interval
+            result = engine.get(result.analysis_id)
+        return result
+
+    @staticmethod
+    def _unavailable(exc: Exception) -> ApiError:
+        return ApiError(503, "scan_unavailable", "The scan service is temporarily unavailable.")
 
     # ── bodies ───────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _identification_out(source: str, photos: list[dict], ident: Optional[Identification],
-                            status: str, field_sources: Optional[dict] = None) -> dict:
-        out: dict[str, Any] = {"source": source, "status": status, "photos": photos,
-                               "field_sources": field_sources or {}}
-        if ident is not None:
-            out.update(
-                confidence=ident.confidence,
-                summary=ident.summary,
-                observations=list(ident.observations),
-                alternatives=[dict(a) for a in ident.alternatives],
-                open_questions=list(ident.open_questions),
-                next_evidence=list(ident.next_evidence),
-            )
-        return out
+    def _completed_body(self, base: dict, engine: ScanEngine, result: AnalysisResult) -> dict:
+        comps = engine.comparables(result.analysis_id) if result.identified else []
+        price = result.price_context
+        price_out = {
+            "status": price.status,
+            "currency": price.currency,
+            "low": int(round(price.low)) if price.status == "provided" and price.low is not None else None,
+            "high": int(round(price.high)) if price.status == "provided" and price.high is not None else None,
+            "basis": price.basis,
+            "explanation": price.explanation,
+            "withheld_reason": price.withheld_reason,
+        }
+        if not result.identified and price_out["status"] == "withheld" and not price_out["withheld_reason"]:
+            price_out["withheld_reason"] = "The item could not be identified."
+        if price_out["status"] == "provided" and len(comps) < MIN_COMPARABLES:
+            price_out.update(status="withheld", low=None, high=None, basis=None,
+                             explanation=None, withheld_reason=FLOOR_REASON)
 
-    @staticmethod
-    def _validated(body: dict) -> dict:
+        realized = sum(1 for c in comps if c.price_type == "realized")
+        body = {
+            **base,
+            "status": "completed",
+            "model_version": result.model_version,
+            "synthetic_data": engine.synthetic,
+            "identification": {
+                "status": "identified" if result.identified else "unidentified",
+                "summary": result.summary,
+                "confidence": result.confidence,
+                "observations": list(result.observations),
+                "alternatives": [dict(a) for a in result.alternatives],
+                "open_questions": list(result.open_questions),
+                "next_evidence": list(result.next_evidence),
+            },
+            "price_context": price_out,
+            "comparables": {
+                "status": "found" if comps else "none_found",
+                "total": len(comps),
+                "realized": realized,
+                "asking": len(comps) - realized,
+                "items": [
+                    {
+                        "source": c.source, "title": c.title, "url": c.url,
+                        "photo_url": c.photo_url, "price": c.price, "currency": c.currency,
+                        "price_type": c.price_type,
+                        "observed_on": c.observed_on.isoformat() if c.observed_on else None,
+                        "differences": list(c.differences),
+                    }
+                    for c in comps
+                ],
+            },
+            "warnings": [SANDBOX_WARNING] if engine.synthetic else [],
+        }
         return ScanResponse.model_validate(body).model_dump(mode="json")
 
-    def _unpriced(self, base: dict, identification: dict, status: str, synthetic: bool,
-                  reason: Optional[str], warnings: list[str]) -> dict:
-        confidence = None
-        if reason is not None:
-            confidence = {"score": 0.0, "level": "none",
-                          "reasons": [{"code": "unidentified", "message": reason}]}
-        return self._validated({
-            **base, "status": status, "item_type": None, "synthetic_data": synthetic,
-            "identification": identification, "item": None, "price": None, "breakdown": None,
-            "confidence": confidence, "comps": [], "comps_summary": None, "scenarios": [],
-            "warnings": warnings,
-        })
-
-    def _complete(self, *, base: dict, tenant: Tenant, mv: ModelVersion, mv_source: str,
-                  ident: Identification, stated: Mapping[str, Any], photos: list[dict],
-                  identifier: Optional[IdentifyEngine]) -> dict:
-        source = ("photos_and_details" if photos and stated else "photos") if photos else "details"
-        synthetic_ident = bool(identifier and identifier.synthetic)
-        warnings = [SANDBOX_IDENTIFY_WARNING] if synthetic_ident else []
-
-        low_confidence = bool(photos) and (ident.confidence or 0.0) < MIN_IDENTIFICATION_CONFIDENCE
-        if ident.status != "identified" or low_confidence:
-            reason = (
-                f"The identification is too uncertain to price ({(ident.confidence or 0):.0%} "
-                "confident), so no price is returned. See the alternatives and next evidence."
-                if ident.status == "identified"
-                else "The item could not be identified from the photos, so no price is "
-                     "returned. See the next evidence."
-            )
-            return self._unpriced(base, self._identification_out(source, photos, ident, ident.status),
-                                  "unidentified", synthetic_ident, reason, warnings)
-
-        if photos:
-            merged, sources = merge_item(ident.item or {}, stated)
-        else:
-            merged, sources = dict(stated), {k: "stated" for k in stated}
-        identification = self._identification_out(source, photos, ident, "identified", sources)
-        try:
-            fields = ItemFields.model_validate(merged)
-            fields.check_complete()
-        except ValidationError as exc:
-            reason = f"The identified item is incomplete or inconsistent: {format_validation_error(exc)}"
-            return self._unpriced(base, identification, "unidentified", synthetic_ident, reason, warnings)
-        except ValueError as exc:
-            reason = f"The identified item is incomplete or inconsistent: {exc}"
-            return self._unpriced(base, identification, "unidentified", synthetic_ident, reason, warnings)
-
-        fragment, _engine = self.pricing.price_item(
-            tenant, fields.to_query(), base["valuation_basis"], mv, mv_source,
-            identification_confidence=ident.confidence if photos else None,
-        )
-        body = {**base, **fragment, "identification": identification}
-        body["synthetic_data"] = fragment["synthetic_data"] or synthetic_ident
-        body["warnings"] = warnings + fragment["warnings"]
-        return self._validated(body)
+    @staticmethod
+    def _processing_body(base: dict, engine: ScanEngine) -> dict:
+        body = {
+            **base,
+            "status": "processing",
+            "model_version": None,
+            "synthetic_data": engine.synthetic,
+            "identification": {"status": "processing"},
+            "price_context": {"status": "processing"},
+            "comparables": {"status": "processing"},
+            "warnings": [f"The scan is still running. Retrieve it with GET /scans/{base['scan_id']}."],
+        }
+        return ScanResponse.model_validate(body).model_dump(mode="json")
 
     # ── persistence ──────────────────────────────────────────────────────────
 
     def _finish(self, row: Scan, body: dict) -> None:
-        row.status = body["status"]
+        row.status = "completed"
         row.result = body
-        row.comps_used = body["comps_summary"]["used"] if body.get("comps_summary") else 0
-        row.identification_ref = None
+        row.model_version = body["model_version"]
+        row.priced = body["price_context"]["status"] == "provided"
         row.completed_at = self.state.clock()
         record_scan(self.session, tenant_id=row.tenant_id, product=PRODUCT,
-                    day=row.completed_at.date(), priced=body["status"] == "priced")
+                    day=row.completed_at.date(), priced=row.priced)
 
     def create(
         self,
@@ -225,85 +166,67 @@ class ScanService:
     ) -> dict:
         """Run (or start) one scan. Stages rows on the session; the caller commits."""
         tenant = principal.tenant
-        mv, mv_source = self.pricing.resolve_model(tenant, request.model_version)
-        pricing_engine = self.pricing.engine_for(tenant)  # fail fast before identifying
-        photo_refs = request.photo_refs()
-        photos = [p.public() for p in photo_refs]
-        stated = request.stated()
-        identifier = self.identifier_for(tenant) if photo_refs else None
-        now = self.state.clock()
+        engine = self.engine_for(tenant)
+        photos = request.photo_refs()
+        details = request.details.hints() if request.details else {}
+        requested_version = request.model_version or tenant.pinned_model_version
+        try:
+            result = engine.analyze(photos, details, requested_version)
+            wait = self.state.settings.scan_wait_seconds if wait_seconds is None else wait_seconds
+            result = self._wait(engine, result, wait)
+        except UnsupportedModelVersion as exc:
+            source = "request" if request.model_version else "account pin"
+            raise ApiError(422, "unknown_model_version",
+                           f"Model version {exc.requested!r} ({source}) is not available.",
+                           details={"requested": exc.requested, "available": exc.available}) from exc
+        except ScanUnavailable as exc:
+            raise self._unavailable(exc) from exc
 
+        now = self.state.clock()
         base = {
             "object": "scan",
             "scan_id": new_id("scn"),
             "created_at": now.isoformat(),
             "product": PRODUCT,
-            "model_version": mv.id,
-            "model_version_source": mv_source,
-            "engine_version": mv.engine_version,
-            "valuation_basis": request.valuation_basis,
-            "currency": "USD",
             "client_reference": request.client_reference,
             "inputs": request.public_inputs(),
             "batch_job_id": batch_job_id,
         }
         row = Scan(
             id=base["scan_id"], tenant_id=tenant.id, api_key_id=principal.api_key.id,
-            product=PRODUCT, status="processing", valuation_basis=request.valuation_basis,
-            model_version=mv.id, model_version_source=mv_source, engine=pricing_engine.name,
-            identifier=identifier.name if identifier else None, photo_count=len(photo_refs),
+            product=PRODUCT, status="processing", engine=engine.name, photo_count=len(photos),
             request_payload=base["inputs"], result={}, batch_job_id=batch_job_id,
             batch_row=batch_row, created_at=now,
         )
-
-        if identifier is not None:
-            wait = self.state.settings.identify_wait_seconds if wait_seconds is None else wait_seconds
-            ident = self._identify(identifier, photo_refs, stated, wait)
-        else:
-            ident = Identification(status="identified", item=stated)
-
-        if isinstance(ident, PendingIdentification):
-            body = self._unpriced(
-                base,
-                self._identification_out("photos_and_details" if stated else "photos", photos,
-                                         None, "processing"),
-                "processing", identifier.synthetic, None,
-                [f"Identification is still running. Retrieve this scan with GET /scans/{base['scan_id']}."],
-            )
-            row.identification_ref = ident.ref
-            row.result = body
-            self.session.add(row)
-            return body
-
-        body = self._complete(base=base, tenant=tenant, mv=mv, mv_source=mv_source, ident=ident,
-                              stated=stated, photos=photos, identifier=identifier)
         self.session.add(row)
+
+        if isinstance(result, PendingAnalysis):
+            row.analysis_ref = result.analysis_id
+            row.result = self._processing_body(base, engine)
+            return row.result
+
+        row.analysis_ref = result.analysis_id
+        try:
+            body = self._completed_body(base, engine, result)
+        except ScanUnavailable as exc:
+            self.session.expunge(row)
+            raise self._unavailable(exc) from exc
         self._finish(row, body)
         return body
 
     def refresh(self, row: Scan) -> dict:
-        """Advance a processing scan if its identification has finished. Caller commits."""
-        if row.status != "processing" or not row.identification_ref:
+        """Complete a processing scan if its analysis has finished. Caller commits."""
+        if row.status != "processing" or not row.analysis_ref:
             return row.result
-        tenant = self.session.get(Tenant, row.tenant_id)
-        identifier = self.identifier_for(tenant)
+        engine = self.engine_for(self.session.get(Tenant, row.tenant_id))
         try:
-            ident = identifier.poll(row.identification_ref)
-        except IdentificationUnavailable:
+            result = engine.get(row.analysis_ref)
+            if isinstance(result, PendingAnalysis):
+                return row.result
+            base = {k: row.result[k] for k in ("object", "scan_id", "created_at", "product",
+                                               "client_reference", "inputs", "batch_job_id")}
+            body = self._completed_body(base, engine, result)
+        except ScanUnavailable:
             return row.result  # still processing as far as the customer can tell
-        if isinstance(ident, PendingIdentification):
-            return row.result
-
-        inputs = row.request_payload
-        stated = ItemFields.model_validate({k: inputs.get(k) for k in ITEM_FIELDS
-                                            if inputs.get(k) is not None}).stated()
-        mv = self.state.registry.get(row.model_version)
-        base = {k: row.result[k] for k in (
-            "object", "scan_id", "created_at", "product", "model_version", "model_version_source",
-            "engine_version", "valuation_basis", "currency", "client_reference", "inputs",
-            "batch_job_id")}
-        body = self._complete(base=base, tenant=tenant, mv=mv, mv_source=row.model_version_source,
-                              ident=ident, stated=stated, photos=inputs.get("photos", []),
-                              identifier=identifier)
         self._finish(row, body)
         return body

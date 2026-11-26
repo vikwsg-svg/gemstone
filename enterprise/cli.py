@@ -4,7 +4,7 @@ Operator CLI (there is no admin console in v1).
     python -m enterprise.cli create-tenant --name "Acme Insurance" --environment sandbox
     python -m enterprise.cli create-key --tenant ten_... --scopes scan --name "prod server"
     python -m enterprise.cli revoke-key --key-id key_...
-    python -m enterprise.cli pin-model --tenant ten_... --version scan-2026.09.0
+    python -m enterprise.cli pin-model --tenant ten_... --version <scan model version>
     python -m enterprise.cli export-openapi --output docs/enterprise/openapi.json
 
 Uses ENTERPRISE_DATABASE_URL. Schema changes go through Alembic
@@ -22,7 +22,6 @@ from enterprise.auth import PRODUCTS, create_tenant, issue_api_key
 from enterprise.db import Database
 from enterprise.models import ApiKey, Tenant
 from enterprise.settings import get_settings
-from enterprise.valuation.model_versions import ModelRegistry
 
 
 def _db() -> Database:
@@ -49,10 +48,8 @@ def init_db() -> None:
 @click.option("--name", required=True)
 @click.option("--environment", type=click.Choice(["live", "sandbox"]), default="sandbox",
               show_default=True)
-@click.option("--pin", "pin", default=None, help="Pin a model version for this tenant.")
+@click.option("--pin", "pin", default=None, help="Pin a scan model version for this tenant.")
 def create_tenant_cmd(name: str, environment: str, pin: str | None) -> None:
-    if pin and ModelRegistry().get(pin) is None:
-        raise click.ClickException(f"unknown model version {pin!r}")
     with _db().session_scope() as session:
         tenant = create_tenant(session, name, environment, pin)
         session.commit()
@@ -100,8 +97,6 @@ def revoke_key_cmd(key_id: str) -> None:
 def pin_model_cmd(tenant_id: str, version: str | None, clear: bool) -> None:
     if bool(version) == clear:
         raise click.ClickException("pass exactly one of --version or --clear")
-    if version and ModelRegistry().get(version) is None:
-        raise click.ClickException(f"unknown model version {version!r}")
     with _db().session_scope() as session:
         tenant = session.get(Tenant, tenant_id)
         if tenant is None:
@@ -119,7 +114,7 @@ def export_openapi_cmd(output: str) -> None:
     from enterprise.settings import EnterpriseSettings
 
     settings = EnterpriseSettings(database_url="sqlite://")
-    app = create_enterprise_app(settings, live_engine=None, live_identifier=None)
+    app = create_enterprise_app(settings, live_engine=None)
     spec = export_openapi(app, settings.public_base_url)
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(spec, indent=2, sort_keys=False) + "\n")

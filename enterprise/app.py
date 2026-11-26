@@ -22,72 +22,46 @@ from fastapi import FastAPI
 from enterprise import __version__
 from enterprise.db import Database
 from enterprise.deps import AppState
-from enterprise.engine.base import CompsEngine, IdentifyEngine
-from enterprise.engine.remote import RemoteCompsEngine, RemoteIdentifyEngine
-from enterprise.engine.sandbox import SandboxEngine
-from enterprise.engine.sandbox_identify import SandboxIdentifier
+from enterprise.engine.base import ScanEngine
+from enterprise.engine.remote import RemoteScanEngine
+from enterprise.engine.sandbox import SandboxScanEngine
 from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
 from enterprise.settings import EnterpriseSettings, get_settings
-from enterprise.valuation.model_versions import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
 API_DESCRIPTION = """
 The GemstoneAI Enterprise API: the pricing and verification layer for jewelry.
 
-The **Scan API** is the business version of a GemstoneAI scan result. Send photos of a piece
-of jewelry or a loose stone, its details, or both, and get back what it is and what it's worth:
-the identification (observations, alternatives, open questions, next evidence), a price range in
-your chosen valuation basis, a Raw/Make/Market breakdown for pieces, the comparables behind it
-(each tagged as a realized sale or an asking price), a confidence score with reason codes, and
-scenario pricing for unknowns such as natural vs lab-grown.
+The **Scan API** is today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos of
+a piece of jewelry or a loose stone (plus anything you already know) and get the whole result in
+one response: the identification (observations, alternatives, open questions, next evidence),
+the price context, and the comparables behind it, each tagged as an asking price or a realized
+sale.
 
 * **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.
-* **Sandbox:** `gsk_test_` keys run against simulated identification and synthetic comparables;
-  responses carry `synthetic_data: true`.
-* **No guessing:** an item that can't be identified well enough (`unidentified`), or fewer than 5
-  qualifying comparables (`insufficient_data`), means no price.
+* **Sandbox:** `gsk_test_` keys return example scan results; responses carry `synthetic_data: true`.
+* **No guessing:** no price with fewer than 5 comparables, or when the item can't be identified;
+  the reason is always given.
 * **Audit:** every scan is stored and retrievable by `scan_id`.
-* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.
+* **Versioned:** every result is stamped with the scan `model_version`; you can pin one.
 * **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.
 """
 
 _UNSET: Any = object()
 
 
-def live_engine_from_settings(settings: EnterpriseSettings) -> Optional[CompsEngine]:
-    if settings.engine_backend == "remote":
-        if not settings.engine_url:
-            raise RuntimeError(
-                "ENTERPRISE_ENGINE_URL is required when ENTERPRISE_ENGINE_BACKEND=remote"
-            )
-        return RemoteCompsEngine(
-            settings.engine_url, settings.engine_api_key, settings.engine_timeout_seconds
-        )
-    if settings.engine_backend == "sandbox":
-        logger.warning(
-            "ENTERPRISE_ENGINE_BACKEND=sandbox: live tenants will receive SYNTHETIC prices"
-        )
-        return SandboxEngine()
-    return None
-
-
-def live_identifier_from_settings(settings: EnterpriseSettings) -> Optional[IdentifyEngine]:
-    if settings.identify_backend == "remote":
-        if not settings.identify_url:
-            raise RuntimeError(
-                "ENTERPRISE_IDENTIFY_URL is required when ENTERPRISE_IDENTIFY_BACKEND=remote"
-            )
-        return RemoteIdentifyEngine(
-            settings.identify_url, settings.identify_api_key, settings.identify_timeout_seconds
-        )
-    if settings.identify_backend == "sandbox":
-        logger.warning(
-            "ENTERPRISE_IDENTIFY_BACKEND=sandbox: live tenants will receive SIMULATED identification"
-        )
-        return SandboxIdentifier()
+def live_engine_from_settings(settings: EnterpriseSettings) -> Optional[ScanEngine]:
+    if settings.scan_backend == "remote":
+        if not settings.scan_url:
+            raise RuntimeError("ENTERPRISE_SCAN_URL is required when ENTERPRISE_SCAN_BACKEND=remote")
+        return RemoteScanEngine(settings.scan_url, settings.scan_api_key,
+                                settings.scan_timeout_seconds)
+    if settings.scan_backend == "sandbox":
+        logger.warning("ENTERPRISE_SCAN_BACKEND=sandbox: live tenants will receive EXAMPLE results")
+        return SandboxScanEngine()
     return None
 
 
@@ -95,25 +69,17 @@ def create_enterprise_app(
     settings: Optional[EnterpriseSettings] = None,
     *,
     db: Optional[Database] = None,
-    live_engine: Optional[CompsEngine] = _UNSET,
-    sandbox_engine: Optional[CompsEngine] = None,
-    registry: Optional[ModelRegistry] = None,
+    live_engine: Optional[ScanEngine] = _UNSET,
+    sandbox_engine: Optional[ScanEngine] = None,
     clock: Optional[Callable[[], datetime]] = None,
-    sandbox_identifier: Optional[IdentifyEngine] = None,
-    live_identifier: Optional[IdentifyEngine] = _UNSET,
     sleep: Optional[Callable[[float], None]] = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     state = AppState(
         settings=settings,
         db=db or Database(settings.database_url),
-        registry=registry or ModelRegistry(default_id=settings.default_model_version),
-        sandbox_engine=sandbox_engine or SandboxEngine(),
+        sandbox_engine=sandbox_engine or SandboxScanEngine(),
         live_engine=live_engine_from_settings(settings) if live_engine is _UNSET else live_engine,
-        sandbox_identifier=sandbox_identifier or SandboxIdentifier(),
-        live_identifier=(
-            live_identifier_from_settings(settings) if live_identifier is _UNSET else live_identifier
-        ),
         clock=clock or utcnow,
     )
     if sleep is not None:
@@ -123,7 +89,7 @@ def create_enterprise_app(
         version=__version__,
         description=API_DESCRIPTION,
         openapi_tags=[
-            {"name": "Scan API", "description": "Identify and price jewelry and loose stones."},
+            {"name": "Scan API", "description": "Scan jewelry and loose stones: identify and price."},
             {"name": "Account", "description": "Usage and account information."},
         ],
         openapi_url="/openapi.json",

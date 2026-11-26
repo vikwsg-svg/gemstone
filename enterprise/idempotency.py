@@ -8,7 +8,7 @@ Semantics (per tenant and endpoint):
 - Same key, different request: 422 ``idempotency_key_reused``.
 - Errors (4xx/5xx) are not stored, so a corrected request can reuse the key.
 - Two concurrent requests with one key: the unique constraint lets one win;
-  the loser's transaction (including its valuation and metering rows) is
+  the loser's transaction (including its scan and metering rows) is
   rolled back and it replays the winner's response.
 """
 

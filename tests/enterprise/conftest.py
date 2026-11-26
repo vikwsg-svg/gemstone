@@ -5,7 +5,7 @@ from enterprise.app import create_app
 from enterprise.auth import create_tenant, issue_api_key
 from enterprise.db import Database
 from enterprise.settings import EnterpriseSettings
-from tests.enterprise.helpers import Clock, FakeEngine, FakeIdentifier, TenantKey
+from tests.enterprise.helpers import Clock, FakeScanEngine, TenantKey
 
 
 @pytest.fixture
@@ -22,23 +22,17 @@ def db(tmp_path) -> Database:
 
 @pytest.fixture
 def settings(db) -> EnterpriseSettings:
-    return EnterpriseSettings(_env_file=None, database_url=db.url, engine_backend="none")
+    return EnterpriseSettings(_env_file=None, database_url=db.url, scan_backend="none")
 
 
 @pytest.fixture
-def live_engine() -> FakeEngine:
-    return FakeEngine()
+def engine() -> FakeScanEngine:
+    return FakeScanEngine()
 
 
 @pytest.fixture
-def identifier() -> FakeIdentifier:
-    return FakeIdentifier()
-
-
-@pytest.fixture
-def app(db, settings, live_engine, identifier, clock):
-    return create_app(settings, db=db, live_engine=live_engine, live_identifier=identifier,
-                      clock=clock, sleep=lambda seconds: None)
+def app(db, settings, engine, clock):
+    return create_app(settings, db=db, live_engine=engine, clock=clock, sleep=lambda s: None)
 
 
 @pytest.fixture

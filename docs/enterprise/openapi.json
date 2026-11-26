@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GemstoneAI Enterprise API",
-    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for jewelry.\n\nThe **Scan API** is the business version of a GemstoneAI scan result. Send photos of a piece\nof jewelry or a loose stone, its details, or both, and get back what it is and what it's worth:\nthe identification (observations, alternatives, open questions, next evidence), a price range in\nyour chosen valuation basis, a Raw/Make/Market breakdown for pieces, the comparables behind it\n(each tagged as a realized sale or an asking price), a confidence score with reason codes, and\nscenario pricing for unknowns such as natural vs lab-grown.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys run against simulated identification and synthetic comparables;\n  responses carry `synthetic_data: true`.\n* **No guessing:** an item that can't be identified well enough (`unidentified`), or fewer than 5\n  qualifying comparables (`insufficient_data`), means no price.\n* **Audit:** every scan is stored and retrievable by `scan_id`.\n* **Reproducibility:** every response is stamped with `model_version`; pin one per request or per account.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
+    "description": "\nThe GemstoneAI Enterprise API: the pricing and verification layer for jewelry.\n\nThe **Scan API** is today's GemstoneAI scan result, enhanced for businesses. Send 1-5 photos of\na piece of jewelry or a loose stone (plus anything you already know) and get the whole result in\none response: the identification (observations, alternatives, open questions, next evidence),\nthe price context, and the comparables behind it, each tagged as an asking price or a realized\nsale.\n\n* **Authentication:** `Authorization: Bearer gsk_...` (or `X-API-Key`). Keys are scoped per product.\n* **Sandbox:** `gsk_test_` keys return example scan results; responses carry `synthetic_data: true`.\n* **No guessing:** no price with fewer than 5 comparables, or when the item can't be identified;\n  the reason is always given.\n* **Audit:** every scan is stored and retrievable by `scan_id`.\n* **Versioned:** every result is stamped with the scan `model_version`; you can pin one.\n* **Idempotency:** send `Idempotency-Key` on POSTs to make retries safe.\n",
     "version": "1.0.0"
   },
   "paths": {
@@ -12,7 +12,7 @@
           "Scan API"
         ],
         "summary": "Scan a piece of jewelry or a loose stone",
-        "description": "The business version of a GemstoneAI scan result. Send 1-5 photos of one item, the item's details, or both (stated details always win over what the photos suggest). Returns the identification (summary, observations, alternatives, open questions and the next evidence that would settle them), then the price: a low/mid/high range in the requested valuation basis (also per carat for loose stones), a Raw/Make/Market breakdown for pieces, the comparables used (each tagged realized sale or asking price), a confidence score with reason codes, and scenario pricing for unknowns. **No guessing:** an item that cannot be identified well enough returns `unidentified`, and fewer than 5 qualifying comparables returns `insufficient_data`, both with no price. If identification is still running the response is `202` with `status: processing`; retrieve the scan with `GET /scans/{scan_id}`. Every scan is stored and retrievable.",
+        "description": "Today's GemstoneAI scan result, in one response: the identification (observations, alternatives, open questions, next evidence), the price context, and the comparables behind it (each an asking price or a realized sale). Send 1-5 photos of one item, plus any details you already know. **No price with fewer than 5 comparables** or when the item can't be identified; the reason is always given. If the scan is still running, the response is `202` with `status: processing`: retrieve it with `GET /scans/{scan_id}`. Every scan is stored and retrievable.",
         "operationId": "create_scan_scans_post",
         "security": [
           {
@@ -36,10 +36,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of running and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
               "title": "Idempotency-Key"
             },
-            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours."
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of running and billing a second scan. Keys are scoped to your account and kept for 24 hours."
           }
         ],
         "requestBody": {
@@ -64,7 +64,7 @@
             }
           },
           "202": {
-            "description": "Accepted; identification still running.",
+            "description": "Accepted; the scan is still running.",
             "content": {
               "application/json": {
                 "schema": {
@@ -104,7 +104,7 @@
             }
           },
           "503": {
-            "description": "Identification or pricing engine unavailable.",
+            "description": "Scan service unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -121,7 +121,7 @@
         "tags": [
           "Scan API"
         ],
-        "summary": "Retrieve a scan (audit trail, or the result of a processing scan)",
+        "summary": "Retrieve a scan (audit trail, or the result of a running scan)",
         "operationId": "get_scan_scans__scan_id__get",
         "security": [
           {
@@ -203,7 +203,7 @@
           "Scan API"
         ],
         "summary": "Submit a CSV of items to scan in batch",
-        "description": "Upload a CSV (multipart field `file`), one item per row. Columns: `row_id`, `photo_urls` (up to 5 public https links separated by `|`), `item_type` (default `loose_stone` when a row has no photos), `valuation_basis`; center or loose stone: `variety`, `species`, `carat`, `shape`, `color_grade`, `clarity`, `cut_grade`, `treatment`, `origin`, `growth`, `lab`, `lab_report_number`, `length_mm`, `width_mm`, `depth_mm`; side stones: `side_variety`, `side_carat_total`, `side_count`, `side_growth`; metal: `metal_type`, `metal_purity`, `metal_color`, `metal_weight_grams`; piece: `brand`, `signed`, `era`, `condition`. The header must include `photo_urls`, `variety`, `item_type` or `metal_type`. The job runs asynchronously; poll the status endpoint, then download the results CSV. The whole batch is pinned to one model version.",
+        "description": "Upload a CSV (multipart field `file`), one item per row. Required column: `photo_urls` (1-5 public https links separated by `|`). Optional columns, passed to the scan as details: `row_id`, `item_type`, `metal_type`, `metal_purity`, `metal_weight_grams`, `brand`, `signed`, `era`, `condition`, `lab`, `lab_report_number`, `notes`. The job runs asynchronously; poll the status endpoint, then download the results CSV.",
         "operationId": "create_batch_scans_batch_post",
         "security": [
           {
@@ -227,10 +227,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
+              "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of running and billing a second scan. Keys are scoped to your account and kept for 24 hours.",
               "title": "Idempotency-Key"
             },
-            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of creating and billing a second scan. Keys are scoped to your account and kept for 24 hours."
+            "description": "Optional. Retrying a POST with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of running and billing a second scan. Keys are scoped to your account and kept for 24 hours."
           }
         ],
         "requestBody": {
@@ -285,7 +285,7 @@
             }
           },
           "503": {
-            "description": "Identification or pricing engine unavailable.",
+            "description": "Scan service unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -475,65 +475,6 @@
         }
       }
     },
-    "/models": {
-      "get": {
-        "tags": [
-          "Scan API"
-        ],
-        "summary": "List model versions available for pinning",
-        "operationId": "list_models_models_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid API key.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Key lacks the required product scope.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          },
-          {
-            "APIKeyHeader": []
-          }
-        ]
-      }
-    },
     "/usage": {
       "get": {
         "tags": [
@@ -707,23 +648,6 @@
             ],
             "title": "Completed At"
           },
-          "valuation_basis": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "retail_replacement",
-                  "fair_market",
-                  "wholesale",
-                  "auction_realized"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valuation Basis"
-          },
           "model_version": {
             "anyOf": [
               {
@@ -747,9 +671,9 @@
             "type": "integer",
             "title": "Priced Rows"
           },
-          "insufficient_rows": {
+          "unpriced_rows": {
             "type": "integer",
-            "title": "Insufficient Rows"
+            "title": "Unpriced Rows"
           },
           "failed_rows": {
             "type": "integer",
@@ -786,7 +710,7 @@
           "total_rows",
           "processed_rows",
           "priced_rows",
-          "insufficient_rows",
+          "unpriced_rows",
           "failed_rows"
         ],
         "title": "BatchJobResponse"
@@ -798,24 +722,6 @@
             "contentMediaType": "application/octet-stream",
             "title": "File",
             "description": "CSV file, UTF-8."
-          },
-          "valuation_basis": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "retail_replacement",
-                  "fair_market",
-                  "wholesale",
-                  "auction_realized"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valuation Basis",
-            "description": "Default basis for rows without a valuation_basis column."
           },
           "model_version": {
             "anyOf": [
@@ -836,128 +742,22 @@
         ],
         "title": "Body_create_batch_scans_batch_post"
       },
-      "Breakdown": {
+      "ComparableOut": {
         "properties": {
-          "raw": {
-            "$ref": "#/components/schemas/BreakdownPart",
-            "description": "Materials: metal and stones."
-          },
-          "make": {
-            "$ref": "#/components/schemas/BreakdownPart",
-            "description": "Craftsmanship and manufacture."
-          },
-          "market": {
-            "$ref": "#/components/schemas/BreakdownPart",
-            "description": "Brand, period and market premium."
-          }
-        },
-        "type": "object",
-        "required": [
-          "raw",
-          "make",
-          "market"
-        ],
-        "title": "Breakdown"
-      },
-      "BreakdownPart": {
-        "properties": {
-          "share": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Share"
-          },
-          "value": {
-            "type": "integer",
-            "title": "Value",
-            "description": "Share of the mid total, in the requested basis."
-          }
-        },
-        "type": "object",
-        "required": [
-          "share",
-          "value"
-        ],
-        "title": "BreakdownPart"
-      },
-      "Comp": {
-        "properties": {
-          "comp_id": {
-            "type": "string",
-            "title": "Comp Id"
-          },
-          "source_type": {
-            "type": "string",
-            "enum": [
-              "realized",
-              "asking"
-            ],
-            "title": "Source Type",
-            "description": "'realized' = completed sale; 'asking' = list price, not a transaction."
-          },
           "source": {
             "type": "string",
             "title": "Source"
           },
-          "date": {
-            "type": "string",
-            "format": "date",
-            "title": "Date",
-            "description": "Sale date (realized) or listing date (asking)."
-          },
-          "currency": {
-            "type": "string",
-            "title": "Currency"
-          },
-          "carat": {
+          "title": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Carat"
-          },
-          "price_total": {
-            "type": "number",
-            "title": "Price Total"
-          },
-          "price_per_carat": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Per Carat"
-          },
-          "adjusted_price_per_carat": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Adjusted Price Per Carat",
-            "description": "Engine adjustment toward the subject (loose stones)."
-          },
-          "adjusted_price_total": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Adjusted Price Total",
-            "description": "Engine adjustment toward the subject (pieces)."
+            "title": "Title"
           },
           "url": {
             "anyOf": [
@@ -968,8 +768,7 @@
                 "type": "null"
               }
             ],
-            "title": "Url",
-            "description": "Link to the listing or sale record."
+            "title": "Url"
           },
           "photo_url": {
             "anyOf": [
@@ -982,189 +781,92 @@
             ],
             "title": "Photo Url"
           },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "price_type": {
+            "type": "string",
+            "enum": [
+              "asking",
+              "realized"
+            ],
+            "title": "Price Type",
+            "description": "'realized' = completed sale; 'asking' = list price, not a transaction."
+          },
+          "observed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed On"
+          },
           "differences": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "title": "Differences",
-            "description": "How the comparable differs from this item."
-          },
-          "basis_factor": {
-            "type": "number",
-            "title": "Basis Factor",
-            "description": "Multiplier applied to reach the requested basis."
-          },
-          "basis_price_per_carat": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Basis Price Per Carat"
-          },
-          "basis_price_total": {
-            "type": "number",
-            "title": "Basis Price Total",
-            "description": "What this comp implies for the subject, in the requested basis."
-          },
-          "similarity": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Similarity"
-          },
-          "qualified": {
-            "type": "boolean",
-            "title": "Qualified",
-            "description": "True when the comp met the similarity threshold."
-          },
-          "attributes": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Attributes"
+            "description": "How it differs from the scanned item."
           }
         },
         "type": "object",
         "required": [
-          "comp_id",
-          "source_type",
           "source",
-          "date",
+          "price",
           "currency",
-          "price_total",
-          "basis_factor",
-          "basis_price_total",
-          "similarity",
-          "qualified",
-          "attributes"
+          "price_type"
         ],
-        "title": "Comp"
+        "title": "ComparableOut"
       },
-      "CompsSummary": {
+      "ComparablesOut": {
         "properties": {
-          "considered": {
-            "type": "integer",
-            "title": "Considered"
+          "status": {
+            "type": "string",
+            "enum": [
+              "found",
+              "none_found",
+              "processing"
+            ],
+            "title": "Status"
           },
-          "rejected": {
+          "total": {
             "type": "integer",
-            "title": "Rejected",
-            "description": "Comps dropped for missing source_type or invalid data."
-          },
-          "qualified": {
-            "type": "integer",
-            "title": "Qualified"
-          },
-          "used": {
-            "type": "integer",
-            "title": "Used"
+            "title": "Total",
+            "default": 0
           },
           "realized": {
             "type": "integer",
-            "title": "Realized"
+            "title": "Realized",
+            "default": 0
           },
           "asking": {
             "type": "integer",
-            "title": "Asking"
+            "title": "Asking",
+            "default": 0
           },
-          "min_required": {
-            "type": "integer",
-            "title": "Min Required",
-            "default": 5
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "title": "Similarity Threshold"
-          }
-        },
-        "type": "object",
-        "required": [
-          "considered",
-          "rejected",
-          "qualified",
-          "used",
-          "realized",
-          "asking",
-          "similarity_threshold"
-        ],
-        "title": "CompsSummary"
-      },
-      "Confidence": {
-        "properties": {
-          "score": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Score"
-          },
-          "level": {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "low",
-              "none"
-            ],
-            "title": "Level"
-          },
-          "reasons": {
+          "items": {
             "items": {
-              "$ref": "#/components/schemas/Reason"
+              "$ref": "#/components/schemas/ComparableOut"
             },
             "type": "array",
-            "title": "Reasons"
+            "title": "Items"
           }
         },
         "type": "object",
         "required": [
-          "score",
-          "level",
-          "reasons"
+          "status"
         ],
-        "title": "Confidence"
-      },
-      "Dimensions": {
-        "properties": {
-          "length": {
-            "type": "number",
-            "maximum": 200.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Length",
-            "description": "Length in millimetres."
-          },
-          "width": {
-            "type": "number",
-            "maximum": 200.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Width",
-            "description": "Width in millimetres."
-          },
-          "depth": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 200.0,
-                "exclusiveMinimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Depth",
-            "description": "Depth in millimetres."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "length",
-          "width"
-        ],
-        "title": "Dimensions"
+        "title": "ComparablesOut"
       },
       "ErrorDetail": {
         "properties": {
@@ -1207,16 +909,6 @@
       },
       "IdentificationOut": {
         "properties": {
-          "source": {
-            "type": "string",
-            "enum": [
-              "photos",
-              "details",
-              "photos_and_details"
-            ],
-            "title": "Source",
-            "description": "What the identification is based on."
-          },
           "status": {
             "type": "string",
             "enum": [
@@ -1225,20 +917,6 @@
               "processing"
             ],
             "title": "Status"
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 1.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence",
-            "description": "Null when the item was described, not photographed."
           },
           "summary": {
             "anyOf": [
@@ -1251,6 +929,19 @@
             ],
             "title": "Summary",
             "description": "The preliminary identification."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
           },
           "observations": {
             "items": {
@@ -1266,7 +957,7 @@
             },
             "type": "array",
             "title": "Alternatives",
-            "description": "Other things it could be, with probability."
+            "description": "What else it could be, with probability."
           },
           "open_questions": {
             "items": {
@@ -1283,49 +974,154 @@
             "type": "array",
             "title": "Next Evidence",
             "description": "The evidence or testing that would settle them."
-          },
-          "field_sources": {
-            "additionalProperties": {
-              "type": "string",
-              "enum": [
-                "stated",
-                "identified"
-              ]
-            },
-            "type": "object",
-            "title": "Field Sources",
-            "description": "For each item field used, whether you stated it or it was identified."
-          },
-          "photos": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Photos",
-            "description": "Photo metadata (sha256, media type, size, url)."
           }
         },
         "type": "object",
         "required": [
-          "source",
           "status"
         ],
         "title": "IdentificationOut"
       },
-      "MetalInput": {
+      "ItemDetails": {
+        "properties": {
+          "item_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "loose_stone",
+                  "ring",
+                  "earrings",
+                  "necklace",
+                  "pendant",
+                  "bracelet",
+                  "brooch",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Type"
+          },
+          "metal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetalDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand",
+            "description": "Maker or house."
+          },
+          "signed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed",
+            "description": "Bears the maker's signature or mark."
+          },
+          "era": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Era"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "lab": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab",
+            "description": "Lab of a report for the item or its main stone."
+          },
+          "lab_report_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab Report Number"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes",
+            "description": "Anything else, e.g. from a catalogue or appraisal."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ItemDetails",
+        "description": "What you already know about the item. Every field is optional; all are passed to the scan."
+      },
+      "MetalDetails": {
         "properties": {
           "type": {
-            "type": "string",
-            "enum": [
-              "gold",
-              "platinum",
-              "silver",
-              "palladium",
-              "other"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Type",
-            "description": "gold, platinum, silver, palladium or other."
+            "description": "e.g. gold, platinum."
           },
           "purity": {
             "anyOf": [
@@ -1338,7 +1134,7 @@
               }
             ],
             "title": "Purity",
-            "description": "e.g. '18k', '14k', '750', '950', '925'."
+            "description": "e.g. 18k, 950."
           },
           "color": {
             "anyOf": [
@@ -1350,8 +1146,7 @@
                 "type": "null"
               }
             ],
-            "title": "Color",
-            "description": "e.g. yellow, white, rose."
+            "title": "Color"
           },
           "weight_grams": {
             "anyOf": [
@@ -1369,93 +1164,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "type"
-        ],
-        "title": "MetalInput"
-      },
-      "ModelVersionInfo": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "engine_version": {
-            "type": "string",
-            "title": "Engine Version"
-          },
-          "released": {
-            "type": "string",
-            "format": "date",
-            "title": "Released"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "current",
-              "supported",
-              "retired"
-            ],
-            "title": "Status"
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "title": "Similarity Threshold"
-          },
-          "notes": {
-            "type": "string",
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "engine_version",
-          "released",
-          "status",
-          "similarity_threshold",
-          "notes"
-        ],
-        "title": "ModelVersionInfo"
-      },
-      "ModelsResponse": {
-        "properties": {
-          "object": {
-            "type": "string",
-            "const": "list",
-            "title": "Object",
-            "default": "list"
-          },
-          "default_model_version": {
-            "type": "string",
-            "title": "Default Model Version"
-          },
-          "tenant_pinned_model_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tenant Pinned Model Version"
-          },
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/ModelVersionInfo"
-            },
-            "type": "array",
-            "title": "Data"
-          }
-        },
-        "type": "object",
-        "required": [
-          "default_model_version",
-          "tenant_pinned_model_version",
-          "data"
-        ],
-        "title": "ModelsResponse"
+        "title": "MetalDetails"
       },
       "PhotoInput": {
         "properties": {
@@ -1509,218 +1218,108 @@
         "title": "PhotoInput",
         "description": "A photo of the item: a public https URL, or base64 image data with its media type."
       },
-      "Price": {
+      "PriceContextOut": {
         "properties": {
-          "per_carat": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "provided",
+              "withheld",
+              "processing"
+            ],
+            "title": "Status"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "low": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/PriceBand"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Loose stones only; null for pieces."
-          },
-          "total": {
-            "$ref": "#/components/schemas/PriceBand"
-          }
-        },
-        "type": "object",
-        "required": [
-          "per_carat",
-          "total"
-        ],
-        "title": "Price"
-      },
-      "PriceBand": {
-        "properties": {
-          "low": {
-            "type": "integer",
             "title": "Low"
           },
-          "mid": {
-            "type": "integer",
-            "title": "Mid"
-          },
           "high": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "High"
-          }
-        },
-        "type": "object",
-        "required": [
-          "low",
-          "mid",
-          "high"
-        ],
-        "title": "PriceBand"
-      },
-      "Reason": {
-        "properties": {
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "Machine-readable reason code, e.g. 'few_comps'."
           },
-          "message": {
-            "type": "string",
-            "title": "Message"
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis",
+            "description": "What the figure represents, e.g. retail replacement."
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "withheld_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld Reason",
+            "description": "Why there is no price."
           }
         },
         "type": "object",
         "required": [
-          "code",
-          "message"
+          "status"
         ],
-        "title": "Reason"
+        "title": "PriceContextOut"
       },
       "ScanRequest": {
         "properties": {
-          "item_type": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "loose_stone",
-                  "ring",
-                  "earrings",
-                  "necklace",
-                  "pendant",
-                  "bracelet",
-                  "brooch",
-                  "other"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Item Type",
-            "description": "A loose stone or a kind of finished piece. Required without photos."
-          },
-          "stones": {
-            "items": {
-              "$ref": "#/components/schemas/StoneInput"
-            },
-            "type": "array",
-            "maxItems": 50,
-            "title": "Stones",
-            "description": "Exactly one stone for a loose stone; any number (including none) for a piece."
-          },
-          "metal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MetalInput"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Not allowed for a loose stone."
-          },
-          "brand": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Brand",
-            "description": "Maker or house, e.g. a jewelry maison."
-          },
-          "signed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Signed",
-            "description": "True if the piece bears the maker's signature or mark."
-          },
-          "era": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Era",
-            "description": "e.g. 'art deco', 'victorian', 'retro', 'contemporary'."
-          },
-          "condition": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "new",
-                  "excellent",
-                  "very_good",
-                  "good",
-                  "fair",
-                  "poor"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition"
-          },
-          "total_weight_grams": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 10000.0,
-                "exclusiveMinimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Weight Grams"
-          },
           "photos": {
             "items": {
               "$ref": "#/components/schemas/PhotoInput"
             },
             "type": "array",
             "maxItems": 5,
+            "minItems": 1,
             "title": "Photos",
-            "description": "1-5 photos of the same item: front, side, and any stamps inside the band or on the clasp. Optional when the item's details are given in full."
+            "description": "1-5 photos of the same item: front, side, and any stamps inside the band or on the clasp."
           },
-          "description": {
+          "details": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 2000
+                "$ref": "#/components/schemas/ItemDetails"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Description",
-            "description": "Free text, stored for audit; not used for pricing."
-          },
-          "valuation_basis": {
-            "type": "string",
-            "enum": [
-              "retail_replacement",
-              "fair_market",
-              "wholesale",
-              "auction_realized"
-            ],
-            "title": "Valuation Basis",
-            "description": "The value definition the price range is expressed in."
+            "description": "Optional. What you already know, passed to the scan as hints."
           },
           "model_version": {
             "anyOf": [
@@ -1733,7 +1332,7 @@
               }
             ],
             "title": "Model Version",
-            "description": "Pin a model version (overrides the account's pin). See GET /models."
+            "description": "Pin a scan model version (overrides your account's pin)."
           },
           "client_reference": {
             "anyOf": [
@@ -1752,7 +1351,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "valuation_basis"
+          "photos"
         ],
         "title": "ScanRequest",
         "examples": [
@@ -1764,38 +1363,22 @@
               {
                 "url": "https://example.com/ring-inside-band.jpg"
               }
-            ],
-            "valuation_basis": "retail_replacement"
+            ]
           },
           {
-            "item_type": "ring",
-            "metal": {
-              "purity": "950",
-              "type": "platinum",
-              "weight_grams": 6.4
+            "client_reference": "POLICY-88231/ITEM-2",
+            "details": {
+              "item_type": "ring",
+              "metal": {
+                "type": "platinum",
+                "weight_grams": 6.4
+              }
             },
             "photos": [
               {
                 "url": "https://example.com/ring-front.jpg"
               }
-            ],
-            "valuation_basis": "retail_replacement"
-          },
-          {
-            "item_type": "loose_stone",
-            "stones": [
-              {
-                "carat": 1.52,
-                "clarity": "VS1",
-                "color_grade": "G",
-                "growth": "natural",
-                "lab": "GIA",
-                "lab_report_number": "6481234567",
-                "shape": "round",
-                "variety": "diamond"
-              }
-            ],
-            "valuation_basis": "wholesale"
+            ]
           }
         ]
       },
@@ -1819,13 +1402,11 @@
           "status": {
             "type": "string",
             "enum": [
-              "priced",
-              "insufficient_data",
-              "unidentified",
+              "completed",
               "processing"
             ],
             "title": "Status",
-            "description": "priced | insufficient_data (fewer than 5 comps, no price) | unidentified (the item could not be identified well enough to price) | processing."
+            "description": "processing: the scan is still running; retrieve it with GET /scans/{scan_id}."
           },
           "product": {
             "type": "string",
@@ -1833,64 +1414,22 @@
             "title": "Product",
             "default": "scan"
           },
-          "item_type": {
+          "model_version": {
             "anyOf": [
               {
-                "type": "string",
-                "enum": [
-                  "loose_stone",
-                  "ring",
-                  "earrings",
-                  "necklace",
-                  "pendant",
-                  "bracelet",
-                  "brooch",
-                  "other"
-                ]
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Item Type"
-          },
-          "model_version": {
-            "type": "string",
-            "title": "Model Version"
-          },
-          "model_version_source": {
-            "type": "string",
-            "enum": [
-              "request",
-              "tenant_pin",
-              "default"
-            ],
-            "title": "Model Version Source"
-          },
-          "engine_version": {
-            "type": "string",
-            "title": "Engine Version"
+            "title": "Model Version",
+            "description": "The scan model that produced this."
           },
           "synthetic_data": {
             "type": "boolean",
             "title": "Synthetic Data",
-            "description": "True when computed in the sandbox from synthetic data (not market values)."
-          },
-          "valuation_basis": {
-            "type": "string",
-            "enum": [
-              "retail_replacement",
-              "fair_market",
-              "wholesale",
-              "auction_realized"
-            ],
-            "title": "Valuation Basis"
-          },
-          "currency": {
-            "type": "string",
-            "const": "USD",
-            "title": "Currency",
-            "default": "USD"
+            "description": "True in the sandbox: example results, not market values."
           },
           "client_reference": {
             "anyOf": [
@@ -1912,75 +1451,11 @@
           "identification": {
             "$ref": "#/components/schemas/IdentificationOut"
           },
-          "item": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Item",
-            "description": "The item that was priced."
+          "price_context": {
+            "$ref": "#/components/schemas/PriceContextOut"
           },
-          "price": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Price"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null unless status is priced."
-          },
-          "breakdown": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Breakdown"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Raw/Make/Market split of the mid value, for pieces."
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Confidence"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null while processing."
-          },
-          "comps": {
-            "items": {
-              "$ref": "#/components/schemas/Comp"
-            },
-            "type": "array",
-            "title": "Comps"
-          },
-          "comps_summary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CompsSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "scenarios": {
-            "items": {
-              "$ref": "#/components/schemas/ScenarioResult"
-            },
-            "type": "array",
-            "title": "Scenarios"
+          "comparables": {
+            "$ref": "#/components/schemas/ComparablesOut"
           },
           "warnings": {
             "items": {
@@ -2006,273 +1481,13 @@
           "scan_id",
           "created_at",
           "status",
-          "model_version",
-          "model_version_source",
-          "engine_version",
           "synthetic_data",
-          "valuation_basis",
           "inputs",
-          "identification"
+          "identification",
+          "price_context",
+          "comparables"
         ],
         "title": "ScanResponse"
-      },
-      "ScenarioResult": {
-        "properties": {
-          "scenario_id": {
-            "type": "string",
-            "title": "Scenario Id"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "assumptions": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Assumptions"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "priced",
-              "insufficient_data"
-            ],
-            "title": "Status"
-          },
-          "price": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Price"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "comps_used": {
-            "type": "integer",
-            "title": "Comps Used"
-          },
-          "confidence": {
-            "$ref": "#/components/schemas/Confidence"
-          }
-        },
-        "type": "object",
-        "required": [
-          "scenario_id",
-          "label",
-          "assumptions",
-          "status",
-          "price",
-          "comps_used",
-          "confidence"
-        ],
-        "title": "ScenarioResult"
-      },
-      "StoneInput": {
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "center",
-              "side",
-              "accent"
-            ],
-            "title": "Role",
-            "description": "center, side or accent.",
-            "default": "center"
-          },
-          "variety": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Variety",
-            "description": "e.g. 'diamond', 'blue sapphire', 'ruby', 'emerald', 'spinel', 'pearl'."
-          },
-          "species": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Species",
-            "description": "Inferred from variety when omitted."
-          },
-          "carat": {
-            "type": "number",
-            "maximum": 1000.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Carat",
-            "description": "Weight of the stone, or total weight of the group if count > 1."
-          },
-          "count": {
-            "type": "integer",
-            "maximum": 2000.0,
-            "minimum": 1.0,
-            "title": "Count",
-            "default": 1
-          },
-          "shape": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Shape",
-            "description": "Cut shape, e.g. 'round', 'oval'. Required for a loose stone."
-          },
-          "color_grade": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Color Grade",
-            "description": "e.g. 'G' for diamonds, 'vivid' for colored stones."
-          },
-          "clarity": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Clarity",
-            "description": "e.g. 'VS1', 'eye clean'."
-          },
-          "cut_grade": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cut Grade"
-          },
-          "treatment": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "none",
-                  "heated",
-                  "oiled",
-                  "diffused",
-                  "filled",
-                  "irradiated",
-                  "other"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Treatment",
-            "description": "Omit when unknown; colored stones then get scenario pricing per treatment. Synonyms accepted ('unheated', 'no heat', 'minor oil')."
-          },
-          "origin": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Origin",
-            "description": "Omit when unknown."
-          },
-          "growth": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "natural",
-                  "lab_grown"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Growth",
-            "description": "'natural' or 'lab_grown'. Omit when unknown; diamonds then get both scenarios."
-          },
-          "lab": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "GIA",
-                  "IGI",
-                  "HRD",
-                  "AGL",
-                  "SSEF",
-                  "Gubelin",
-                  "GRS"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lab",
-            "description": "Issuing lab. Requires lab_report_number."
-          },
-          "lab_report_number": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32,
-                "minLength": 3,
-                "pattern": "^[A-Za-z0-9\\-/]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lab Report Number"
-          },
-          "dimensions_mm": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Dimensions"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "variety",
-          "carat"
-        ],
-        "title": "StoneInput",
-        "description": "One stone, or a group of identical stones (e.g. 12 side diamonds, 0.40 ct total)."
       },
       "UsageDay": {
         "properties": {
@@ -2360,7 +1575,7 @@
   "tags": [
     {
       "name": "Scan API",
-      "description": "Identify and price jewelry and loose stones."
+      "description": "Scan jewelry and loose stones: identify and price."
     },
     {
       "name": "Account",

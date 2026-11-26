@@ -8,14 +8,14 @@ from sqlalchemy import func, select
 from enterprise.errors import ApiError
 from enterprise.idempotency import request_fingerprint, run_idempotent
 from enterprise.models import IdempotencyRecord, Scan, UsageDaily
-from tests.enterprise.helpers import BASE, FIXED_NOW, stone
+from tests.enterprise.helpers import BASE, FIXED_NOW, scan_body
 
 
 def _post(client, tenant, key=None, **overrides):
     headers = dict(tenant.headers)
     if key is not None:
         headers["Idempotency-Key"] = key
-    return client.post(f"{BASE}/scans", headers=headers, json=stone(**overrides))
+    return client.post(f"{BASE}/scans", headers=headers, json=scan_body(**overrides))
 
 
 def _count(db, model):
@@ -28,7 +28,7 @@ def _usage_total(db):
         return s.scalar(select(func.coalesce(func.sum(UsageDaily.scans_total), 0)))
 
 
-def test_replay_returns_same_valuation_and_meters_once(client, tenant, db, live_engine):
+def test_replay_returns_same_scan_and_meters_once(client, tenant, db, engine):
     first = _post(client, tenant, key="order-123")
     second = _post(client, tenant, key="order-123")
 
@@ -38,12 +38,12 @@ def test_replay_returns_same_valuation_and_meters_once(client, tenant, db, live_
     assert "idempotent-replayed" not in first.headers
     assert _count(db, Scan) == 1
     assert _usage_total(db) == 1
-    assert len(live_engine.calls) == 1  # not re-executed
+    assert len(engine.analyze_calls) == 1  # not re-executed
 
 
 def test_same_key_different_body_is_rejected(client, tenant, db):
     _post(client, tenant, key="k1")
-    resp = _post(client, tenant, key="k1", carat=3.0)
+    resp = _post(client, tenant, key="k1", client_reference="different")
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "idempotency_key_reused"
     assert _count(db, Scan) == 1

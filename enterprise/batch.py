@@ -1,27 +1,18 @@
 """
 CSV batch scans (portfolio revaluation, intake queues).
 
-Upload a CSV; a job is created and processed asynchronously. Each row
-becomes a normal persisted, metered scan linked to the job. Rows that
-fail validation are reported in the results CSV rather than failing the job.
+Upload a CSV; a job is created and processed asynchronously. Each row becomes
+a normal stored, metered scan linked to the job. Rows that fail validation are
+reported in the results CSV rather than failing the job.
 
-Input columns (header row required, case-insensitive, extra columns ignored):
-    row_id, photo_urls (up to 5 https links separated by "|"),
-    item_type (default loose_stone when the row has no photos), valuation_basis
-    center or loose stone: variety, species, carat, shape, color_grade, clarity,
-        cut_grade, treatment, origin, growth, lab, lab_report_number,
-        length_mm, width_mm, depth_mm
-    side stones: side_variety (default diamond), side_carat_total, side_count, side_growth
-    metal: metal_type, metal_purity, metal_color, metal_weight_grams
-    piece: brand, signed, era, condition
-The header must include at least one of photo_urls, variety, item_type or metal_type.
-``valuation_basis`` per row overrides the job-level default.
-
-The whole batch is pinned to one model version, resolved at submission.
+Columns (header row required, case-insensitive, extra columns ignored):
+    photo_urls (required: 1-5 https links separated by "|")
+    row_id, item_type, metal_type, metal_purity, metal_weight_grams, brand,
+    signed, era, condition, lab, lab_report_number, notes (optional details)
 
 v1 runs jobs in-process after the response (FastAPI background task).
-``process_batch_job`` is a plain function so it can be moved onto the
-existing Celery workers without changes.
+``process_batch_job`` is a plain function so it can move onto the existing
+Celery workers without changes.
 """
 
 import csv
@@ -36,30 +27,21 @@ from enterprise.auth import Principal
 from enterprise.deps import AppState
 from enterprise.errors import ApiError
 from enterprise.models import ApiKey, BatchJob, Tenant
-from enterprise.scan import ScanService, format_validation_error
+from enterprise.scan import ScanService
 from enterprise.schemas import ScanRequest
 
 logger = logging.getLogger(__name__)
 
-_STONE_COLUMNS = (
-    "variety", "species", "carat", "shape", "color_grade", "clarity", "cut_grade", "treatment",
-    "origin", "growth", "lab", "lab_report_number",
-)
-_SIDE_COLUMNS = ("side_variety", "side_carat_total", "side_count", "side_growth")
-_METAL_COLUMNS = ("metal_type", "metal_purity", "metal_color", "metal_weight_grams")
-_PIECE_COLUMNS = ("brand", "signed", "era", "condition")
-INPUT_COLUMNS = (
-    "row_id", "photo_urls", "item_type", *_STONE_COLUMNS, "length_mm", "width_mm", "depth_mm",
-    *_SIDE_COLUMNS, *_METAL_COLUMNS, *_PIECE_COLUMNS, "valuation_basis",
-)
-IDENTIFYING_COLUMNS = ("photo_urls", "variety", "item_type", "metal_type")
+_DETAIL_COLUMNS = ("item_type", "brand", "signed", "era", "condition", "lab",
+                   "lab_report_number", "notes")
+_METAL_COLUMNS = {"metal_type": "type", "metal_purity": "purity",
+                  "metal_weight_grams": "weight_grams"}
+INPUT_COLUMNS = ("row_id", "photo_urls", *_DETAIL_COLUMNS, *_METAL_COLUMNS)
 RESULT_COLUMNS = (
     "row_number", "row_id", "status", "scan_id", "identified_as", "identification_confidence",
-    "item_type", "currency", "valuation_basis",
-    "per_carat_low", "per_carat_mid", "per_carat_high", "total_low", "total_mid", "total_high",
-    "breakdown_raw", "breakdown_make", "breakdown_market",
-    "confidence_score", "confidence_level", "reason_codes", "comps_used", "realized_comps",
-    "asking_comps", "model_version", "synthetic_data", "error",
+    "price_status", "price_low", "price_high", "currency", "price_basis", "withheld_reason",
+    "comparables", "realized_comparables", "asking_comparables", "model_version",
+    "synthetic_data", "error",
 )
 
 
@@ -78,99 +60,61 @@ def decode_csv(raw: bytes) -> str:
         raise ApiError(422, "invalid_csv", "The file must be a UTF-8 encoded CSV.") from exc
 
 
-def parse_rows(
-    text: str,
-    *,
-    default_basis: Optional[str],
-    model_version: Optional[str],
-    max_rows: int,
-) -> list[BatchRow]:
+def _format_validation_error(exc: ValidationError) -> str:
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "__root__")
+        parts.append(f"{loc}: {err.get('msg', 'invalid')}" if loc else err.get("msg", "invalid"))
+    return "; ".join(parts)
+
+
+def _row_payload(values: dict[str, str], model_version: Optional[str]) -> dict:
+    urls = [u.strip() for u in (values.get("photo_urls") or "").split("|") if u.strip()]
+    payload: dict = {"photos": [{"url": u} for u in urls]}
+    details = {k: values[k] for k in _DETAIL_COLUMNS if values.get(k)}
+    metal = {key: values[col] for col, key in _METAL_COLUMNS.items() if values.get(col)}
+    if metal:
+        details["metal"] = metal
+    if details:
+        payload["details"] = details
+    if values.get("row_id"):
+        payload["client_reference"] = values["row_id"]
+    if model_version:
+        payload["model_version"] = model_version
+    return payload
+
+
+def parse_rows(text: str, *, model_version: Optional[str], max_rows: int) -> list[BatchRow]:
     reader = csv.reader(io.StringIO(text))
     try:
         header = next(reader)
     except StopIteration:
         raise ApiError(422, "invalid_csv", "The CSV is empty.") from None
     columns = [h.strip().lower() for h in header]
-    if not any(c in columns for c in IDENTIFYING_COLUMNS):
-        raise ApiError(
-            422,
-            "invalid_csv",
-            "The CSV header must include at least one of: " + ", ".join(IDENTIFYING_COLUMNS) + ".",
-            details={"accepted": list(INPUT_COLUMNS)},
-        )
+    if "photo_urls" not in columns:
+        raise ApiError(422, "invalid_csv", "The CSV must have a photo_urls column.",
+                       details={"accepted": list(INPUT_COLUMNS)})
 
     rows: list[BatchRow] = []
     for line in reader:
         if not any(cell.strip() for cell in line):
             continue
         if len(rows) >= max_rows:
-            raise ApiError(
-                422, "too_many_rows", f"A batch may contain at most {max_rows} rows."
-            )
-        values = {
-            col: line[i].strip()
-            for i, col in enumerate(columns)
-            if i < len(line) and col in INPUT_COLUMNS
-        }
+            raise ApiError(422, "too_many_rows", f"A batch may contain at most {max_rows} rows.")
+        values = {col: line[i].strip() for i, col in enumerate(columns)
+                  if i < len(line) and col in INPUT_COLUMNS}
         row_number = len(rows) + 1
         row_id = values.get("row_id") or None
-        payload = _row_payload(values)
-        basis = values.get("valuation_basis") or default_basis
-        if basis:
-            payload["valuation_basis"] = basis
-        if model_version:
-            payload["model_version"] = model_version
-        if row_id:
-            payload["client_reference"] = row_id
         try:
-            request = ScanRequest(**payload)
+            request = ScanRequest(**_row_payload(values, model_version))
             rows.append(BatchRow(row_number, row_id, request, None))
         except ValidationError as exc:
-            rows.append(BatchRow(row_number, row_id, None, format_validation_error(exc)))
+            rows.append(BatchRow(row_number, row_id, None, _format_validation_error(exc)))
     return rows
 
 
-def _row_payload(values: dict[str, str]) -> dict:
-    """Map one CSV row onto the ValuationRequest shape."""
-    payload: dict = {}
-    urls = [u.strip() for u in (values.get("photo_urls") or "").split("|") if u.strip()]
-    if urls:
-        payload["photos"] = [{"url": u} for u in urls]
-    item_type = values.get("item_type") or (None if urls else "loose_stone")
-    if item_type:
-        payload["item_type"] = item_type
-    stones = []
-    stone = {k: values[k] for k in _STONE_COLUMNS if values.get(k)}
-    if stone:
-        stone["role"] = "center"
-        if values.get("length_mm") or values.get("width_mm") or values.get("depth_mm"):
-            stone["dimensions_mm"] = {
-                k: values[f"{k}_mm"] for k in ("length", "width", "depth") if values.get(f"{k}_mm")
-            }
-        stones.append(stone)
-    if values.get("side_variety") or values.get("side_carat_total"):
-        side = {"role": "side", "variety": values.get("side_variety") or "diamond",
-                "carat": values.get("side_carat_total"), "count": values.get("side_count") or 1}
-        if values.get("side_growth"):
-            side["growth"] = values["side_growth"]
-        stones.append(side)
-    if stones:
-        payload["stones"] = stones
-    if values.get("metal_type"):
-        metal = {"type": values["metal_type"]}
-        for col, key in (("metal_purity", "purity"), ("metal_color", "color"),
-                         ("metal_weight_grams", "weight_grams")):
-            if values.get(col):
-                metal[key] = values[col]
-        payload["metal"] = metal
-    for col in _PIECE_COLUMNS:
-        if values.get(col):
-            payload[col] = values[col]
-    return payload
-
-
 def _safe_cell(value: Optional[str]) -> str:
-    """Neutralize spreadsheet formula injection in user-supplied text."""
+    """Neutralize spreadsheet formula injection in text that came from users or engines."""
     if not value:
         return ""
     return "'" + value if value[0] in ("=", "+", "-", "@", "\t", "\r") else value
@@ -180,40 +124,30 @@ def _result_row(row: BatchRow, body: Optional[dict], error: Optional[str]) -> di
     out = {col: "" for col in RESULT_COLUMNS}
     out["row_number"] = row.row_number
     out["row_id"] = _safe_cell(row.row_id)
-
     if body is None:
         out["status"] = "error"
         out["error"] = _safe_cell(error)
         return out
-    ident = body.get("identification") or {}
-    summary = body.get("comps_summary") or {}
-    confidence = body.get("confidence") or {}
+    ident = body["identification"]
+    price = body["price_context"]
+    comps = body["comparables"]
     out.update(
         status=body["status"],
         scan_id=body["scan_id"],
         identified_as=_safe_cell(ident.get("summary")),
         identification_confidence=ident.get("confidence") if ident.get("confidence") is not None else "",
-        item_type=body.get("item_type") or "",
-        currency=body["currency"],
-        valuation_basis=body["valuation_basis"],
-        confidence_score=confidence.get("score", ""),
-        confidence_level=confidence.get("level", ""),
-        reason_codes="|".join(r["code"] for r in confidence.get("reasons", [])),
-        comps_used=summary.get("used", ""),
-        realized_comps=summary.get("realized", ""),
-        asking_comps=summary.get("asking", ""),
-        model_version=body["model_version"],
+        price_status=price["status"],
+        price_low=price.get("low") if price.get("low") is not None else "",
+        price_high=price.get("high") if price.get("high") is not None else "",
+        currency=price.get("currency", ""),
+        price_basis=_safe_cell(price.get("basis")),
+        withheld_reason=_safe_cell(price.get("withheld_reason")),
+        comparables=comps.get("total", ""),
+        realized_comparables=comps.get("realized", ""),
+        asking_comparables=comps.get("asking", ""),
+        model_version=body.get("model_version") or "",
         synthetic_data=str(body["synthetic_data"]).lower(),
     )
-    price = body.get("price")
-    if price:
-        for band in ("low", "mid", "high"):
-            if price.get("per_carat"):
-                out[f"per_carat_{band}"] = price["per_carat"][band]
-            out[f"total_{band}"] = price["total"][band]
-    if body.get("breakdown"):
-        for part in ("raw", "make", "market"):
-            out[f"breakdown_{part}"] = body["breakdown"][part]["value"]
     return out
 
 
@@ -235,35 +169,28 @@ def process_batch_job(state: AppState, job_id: str) -> None:
         session.commit()
 
         try:
-            principal = Principal(
-                tenant=session.get(Tenant, job.tenant_id),
-                api_key=session.get(ApiKey, job.api_key_id),
-            )
+            principal = Principal(tenant=session.get(Tenant, job.tenant_id),
+                                  api_key=session.get(ApiKey, job.api_key_id))
             service = ScanService(state, session)
-            rows = parse_rows(
-                job.input_csv,
-                default_basis=job.valuation_basis,
-                model_version=job.model_version,
-                max_rows=state.settings.batch_max_rows,
-            )
+            rows = parse_rows(job.input_csv, model_version=job.model_version,
+                              max_rows=state.settings.batch_max_rows)
             results = []
             for row in rows:
                 body, error = None, row.error
                 if row.request is not None:
                     try:
-                        body = service.create(
-                            principal, row.request, batch_job_id=job.id, batch_row=row.row_number,
-                            wait_seconds=state.settings.identify_timeout_seconds,
-                        )
+                        body = service.create(principal, row.request, batch_job_id=job.id,
+                                              batch_row=row.row_number,
+                                              wait_seconds=state.settings.scan_timeout_seconds)
                     except ApiError as exc:
                         session.rollback()
                         error = f"{exc.code}: {exc.message}"
                 if body is None:
                     job.failed_rows += 1
-                elif body["status"] == "priced":
+                elif body["price_context"]["status"] == "provided":
                     job.priced_rows += 1
-                else:  # insufficient_data, unidentified or still processing
-                    job.insufficient_rows += 1
+                else:  # withheld, or still processing
+                    job.unpriced_rows += 1
                 job.processed_rows += 1
                 results.append(_result_row(row, body, error))
                 session.commit()

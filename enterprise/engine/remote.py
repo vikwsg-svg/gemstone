@@ -1,181 +1,69 @@
 """
-HTTP adapter to the production V2 comps engine.
+HTTP adapter to the GemstoneAI scan in the backend (not in this repository).
 
-The V2 engine lives in the GemstoneAI backend, which is not in this
-repository. This adapter defines the contract the enterprise layer needs
-from it; wiring it up means exposing (or mapping to) one internal endpoint:
+The contract below mirrors what today's scan already returns (the fields of
+the GemstoneAI agent tools ``analyze_jewelry``, ``get_jewelry_analysis`` and
+``find_jewelry_comparables``). The field names are a proposal: check them
+against a real scan result and adjust ``_analysis`` and ``_comparable``,
+which are the only places that read the backend's payloads.
 
-    POST {ENTERPRISE_ENGINE_URL}/comps/search
-    Authorization: Bearer {ENTERPRISE_ENGINE_API_KEY}
-    {
-      "query": {
-        "item_type": "ring",              # or loose_stone, earrings, necklace, pendant, ...
-        "stones": [
-          { "role": "center", "variety": "diamond", "species": "diamond", "carat": 1.52,
-            "count": 1, "shape": "round", "color_grade": "g", "clarity": "vs1",
-            "cut_grade": "excellent", "treatment": null, "origin": null,
-            "growth": "natural", "lab": "GIA", "lab_report_number": "...",
-            "length_mm": null, "width_mm": null, "depth_mm": null },
-          { "role": "side", "variety": "diamond", "carat": 0.4, "count": 12, ... }
-        ],
-        "metal": { "type": "platinum", "purity": "950", "color": "white", "weight_grams": 5.8 },
-        "brand": null, "signed": null, "era": "contemporary", "condition": "excellent",
-        "total_weight_grams": null
-      },
-      "engine_version": "v2.4",
-      "limit": 60
-    }
-    -> 200 {
-      "comps": [
-        { "comp_id": "lst_123", "source_type": "asking",          # or "realized"
-          "source": "dealer:leibish", "observed_on": "2026-08-14",
-          "currency": "USD", "price_total": 8450.0,
-          "carat": 1.48,                            # loose stones; optional for pieces
-          "similarity": 0.91,
-          "adjusted_price_per_carat": 4210.5,       # optional, loose stones
-          "adjusted_price_total": 8120.0,           # optional, pieces
-          "attributes": { "item_type": "ring", "metal_type": "platinum", ... } }
-      ],
-      "breakdown_shares": { "raw": 0.55, "make": 0.18, "market": 0.27 }   # optional, pieces
-    }
+    POST {ENTERPRISE_SCAN_URL}/analyses
+    { "photos": [ {"url": "https://..."} | {"data": "<base64>", "media_type": "image/jpeg"} ],
+      "details": { "item_type": "ring", "metal": {...}, ... },      # optional hints
+      "model_version": "..." }                                       # optional pin
+    -> 200 { "analysis_id": "ana_...", "status": "completed", "model_version": "...",
+             "identification": { "status": "identified" | "unidentified",
+                                 "summary": "...", "confidence": 0.86,
+                                 "alternatives": [{"label": "...", "probability": 0.08}] },
+             "observations": ["..."], "open_questions": ["..."], "next_evidence": ["..."],
+             "price_context": { "status": "provided" | "withheld", "currency": "USD",
+                                "low": 2400, "high": 6600, "basis": "retail replacement",
+                                "explanation": "...", "withheld_reason": null } }
+    -> 202 { "analysis_id": "ana_...", "status": "processing" }
+    -> 422 { "error": "unsupported_model_version", "available": ["..."] }
 
-Comps without a valid ``source_type`` are rejected by the valuation service
-(and reported in ``comps_summary.rejected``), never silently priced.
+    GET {ENTERPRISE_SCAN_URL}/analyses/{analysis_id}              -> the same 200 / 202 shapes
+    GET {ENTERPRISE_SCAN_URL}/analyses/{analysis_id}/comparables
+    -> 200 { "status": "found" | "none_found",
+             "comparables": [ { "source": "...", "title": "...", "url": "https://...",
+                                "photo_url": "https://...", "price": 3100, "currency": "USD",
+                                "price_type": "asking" | "realized", "observed_at": "2026-08-14",
+                                "differences": ["Smaller center stone"] } ] }
+
+Links into the consumer app are deliberately not mapped: enterprise customers
+never see consumer branding. Enterprise scans should also not count against,
+or appear in, any consumer account; that is the backend endpoint's job.
 """
 
+import base64
 import logging
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Optional
 
 import httpx
 
-import base64
-from collections.abc import Mapping
-
 from enterprise.engine.base import (
-    BREAKDOWN_PARTS,
-    CompsEngine,
-    EngineComp,
-    EngineResult,
-    EngineUnavailable,
-    Identification,
-    IdentificationUnavailable,
-    IdentifyEngine,
-    ItemQuery,
-    PendingIdentification,
+    PRICE_TYPES,
+    AnalysisResult,
+    Comparable,
+    PendingAnalysis,
     PhotoRef,
+    PriceContext,
+    ScanEngine,
+    ScanUnavailable,
+    UnsupportedModelVersion,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class RemoteCompsEngine(CompsEngine):
-    name = "v2"
-    synthetic = False
-
-    def __init__(
-        self,
-        base_url: str,
-        api_key: Optional[str] = None,
-        timeout: float = 5.0,
-        transport: Optional[httpx.BaseTransport] = None,
-    ):
-        headers = {"Accept": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        self._client = httpx.Client(
-            base_url=base_url, timeout=timeout, headers=headers, transport=transport
-        )
-
-    def find_comps(self, query: ItemQuery, *, engine_version: str, limit: int) -> EngineResult:
-        try:
-            resp = self._client.post(
-                "/comps/search",
-                json={"query": query.to_dict(), "engine_version": engine_version, "limit": limit},
-            )
-        except httpx.HTTPError as exc:
-            raise EngineUnavailable(f"comps engine unreachable: {exc.__class__.__name__}") from exc
-        if resp.status_code != 200:
-            raise EngineUnavailable(f"comps engine returned HTTP {resp.status_code}")
-        try:
-            payload = resp.json()
-            raw_comps = payload["comps"]
-            if not isinstance(raw_comps, list):
-                raise TypeError("comps is not a list")
-        except (ValueError, KeyError, TypeError) as exc:
-            raise EngineUnavailable("comps engine returned a malformed response") from exc
-
-        comps: list[EngineComp] = []
-        for raw in raw_comps:
-            comp = self._parse(raw)
-            if comp is not None:
-                comps.append(comp)
-        return EngineResult(comps=comps, breakdown_shares=self._shares(payload))
-
-    @staticmethod
-    def _shares(payload: Any) -> Optional[dict[str, float]]:
-        raw = payload.get("breakdown_shares") if isinstance(payload, dict) else None
-        if not isinstance(raw, dict):
-            return None
-        try:
-            shares = {k: float(raw[k]) for k in BREAKDOWN_PARTS}
-        except (KeyError, TypeError, ValueError):
-            logger.warning("ignoring malformed breakdown_shares from engine: %r", raw)
-            return None
-        if any(v < 0 for v in shares.values()) or abs(sum(shares.values()) - 1.0) > 0.01:
-            logger.warning("ignoring breakdown_shares that do not sum to 1: %r", raw)
-            return None
-        return shares
-
-    @staticmethod
-    def _parse(raw: Any) -> Optional[EngineComp]:
-        def _opt(key: str) -> Optional[float]:
-            value = raw.get(key)
-            return float(value) if value is not None else None
-
-        try:
-            return EngineComp(
-                comp_id=str(raw["comp_id"]),
-                source_type=str(raw.get("source_type") or ""),
-                source=str(raw.get("source") or "unknown"),
-                observed_on=date.fromisoformat(str(raw["observed_on"])[:10]),
-                currency=str(raw.get("currency") or "USD"),
-                price_total=float(raw["price_total"]),
-                carat=_opt("carat"),
-                similarity=float(raw["similarity"]),
-                attributes=dict(raw.get("attributes") or {}),
-                adjusted_price_per_carat=_opt("adjusted_price_per_carat"),
-                adjusted_price_total=_opt("adjusted_price_total"),
-                url=str(raw["url"]) if raw.get("url") else None,
-                photo_url=str(raw["photo_url"]) if raw.get("photo_url") else None,
-                differences=tuple(str(d) for d in (raw.get("differences") or [])),
-            )
-        except (KeyError, TypeError, ValueError, AttributeError):
-            logger.warning("dropping malformed comp from engine: %r", raw)
-            return None
-
-    def close(self) -> None:
-        self._client.close()
+def _opt_float(value: Any) -> Optional[float]:
+    return float(value) if value is not None else None
 
 
-class RemoteIdentifyEngine(IdentifyEngine):
-    """
-    HTTP adapter to the backend's identification pipeline (the scan's first step).
-
-        POST {ENTERPRISE_IDENTIFY_URL}/identify
-        { "photos": [ {"url": "https://..."} | {"data": "<base64>", "media_type": "image/jpeg"} ],
-          "hints": { "item_type": "ring", "metal": {...}, "stones": [...], ... } }   # stated details
-        -> 200 { "status": "identified" | "unidentified",
-                 "item": { "item_type": "ring", "metal": {...}, "stones": [...], "brand": null, ... },
-                 "confidence": 0.86, "summary": "...", "observations": ["..."],
-                 "alternatives": [{"label": "...", "probability": 0.08}],
-                 "open_questions": ["..."], "next_evidence": ["..."] }
-        -> 202 { "status": "processing", "analysis_id": "ana_..." }
-
-        GET {ENTERPRISE_IDENTIFY_URL}/identify/{analysis_id}   -> the same 200 or 202 shapes
-    """
-
-    name = "v2-identify"
+class RemoteScanEngine(ScanEngine):
+    name = "gemstoneai-scan"
     synthetic = False
 
     def __init__(
@@ -192,13 +80,36 @@ class RemoteIdentifyEngine(IdentifyEngine):
             base_url=base_url, timeout=timeout, headers=headers, transport=transport
         )
 
-    def identify(self, photos: list[PhotoRef], hints: Mapping[str, Any]
-                 ) -> "Identification | PendingIdentification":
-        body = {"photos": [self._photo(p) for p in photos], "hints": dict(hints)}
-        return self._call("POST", "/identify", json=body)
+    # ── calls ────────────────────────────────────────────────────────────────
 
-    def poll(self, ref: str) -> "Identification | PendingIdentification":
-        return self._call("GET", f"/identify/{ref}")
+    def analyze(self, photos: list[PhotoRef], details: Mapping[str, Any],
+                model_version: Optional[str]) -> "AnalysisResult | PendingAnalysis":
+        body: dict[str, Any] = {"photos": [self._photo(p) for p in photos],
+                                "details": dict(details)}
+        if model_version:
+            body["model_version"] = model_version
+        return self._analysis(self._request("POST", "/analyses", json=body))
+
+    def get(self, analysis_id: str) -> "AnalysisResult | PendingAnalysis":
+        return self._analysis(self._request("GET", f"/analyses/{analysis_id}"))
+
+    def comparables(self, analysis_id: str) -> list[Comparable]:
+        resp = self._request("GET", f"/analyses/{analysis_id}/comparables")
+        try:
+            data = resp.json()
+            items = data.get("comparables") or []
+            if not isinstance(items, list):
+                raise TypeError("comparables is not a list")
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ScanUnavailable("scan returned malformed comparables") from exc
+        out = []
+        for raw in items:
+            comp = self._comparable(raw)
+            if comp is not None:
+                out.append(comp)
+        return out
+
+    # ── mapping (the only code that reads backend payloads) ─────────────────
 
     @staticmethod
     def _photo(p: PhotoRef) -> dict:
@@ -206,36 +117,85 @@ class RemoteIdentifyEngine(IdentifyEngine):
             return {"data": base64.b64encode(p.data).decode("ascii"), "media_type": p.media_type}
         return {"url": p.url}
 
-    def _call(self, method: str, path: str, **kwargs: Any) -> "Identification | PendingIdentification":
+    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
             resp = self._client.request(method, path, **kwargs)
         except httpx.HTTPError as exc:
-            raise IdentificationUnavailable(f"identify engine unreachable: {exc.__class__.__name__}") from exc
+            raise ScanUnavailable(f"scan unreachable: {exc.__class__.__name__}") from exc
+        if resp.status_code == 422:
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
+            if data.get("error") == "unsupported_model_version":
+                requested = (kwargs.get("json") or {}).get("model_version", "")
+                raise UnsupportedModelVersion(requested, list(data.get("available") or []))
         if resp.status_code not in (200, 202):
-            raise IdentificationUnavailable(f"identify engine returned HTTP {resp.status_code}")
+            raise ScanUnavailable(f"scan returned HTTP {resp.status_code}")
+        return resp
+
+    @staticmethod
+    def _analysis(resp: httpx.Response) -> "AnalysisResult | PendingAnalysis":
         try:
             data = resp.json()
-            status = data.get("status")
-            if resp.status_code == 202 or status == "processing":
-                return PendingIdentification(ref=str(data["analysis_id"]))
+            if resp.status_code == 202 or data.get("status") == "processing":
+                return PendingAnalysis(analysis_id=str(data["analysis_id"]))
+            ident = data.get("identification") or {}
+            status = ident.get("status")
             if status not in ("identified", "unidentified"):
-                raise ValueError(f"unknown status {status!r}")
-            confidence = data.get("confidence")
-            return Identification(
-                status=status,
-                item=dict(data["item"]) if status == "identified" else None,
-                confidence=float(confidence) if confidence is not None else None,
-                summary=data.get("summary"),
+                raise ValueError(f"unknown identification status {status!r}")
+            price = data.get("price_context") or {}
+            price_status = price.get("status", "withheld")
+            if price_status not in ("provided", "withheld"):
+                raise ValueError(f"unknown price status {price_status!r}")
+            return AnalysisResult(
+                analysis_id=str(data["analysis_id"]),
+                model_version=str(data.get("model_version") or "unversioned"),
+                identified=status == "identified",
+                summary=ident.get("summary"),
+                confidence=_opt_float(ident.get("confidence")),
                 observations=tuple(str(o) for o in data.get("observations") or ()),
                 alternatives=tuple(
                     {"label": str(a["label"]), "probability": float(a["probability"])}
-                    for a in data.get("alternatives") or ()
+                    for a in ident.get("alternatives") or ()
                 ),
                 open_questions=tuple(str(q) for q in data.get("open_questions") or ()),
                 next_evidence=tuple(str(e) for e in data.get("next_evidence") or ()),
+                price_context=PriceContext(
+                    status=price_status,
+                    currency=str(price.get("currency") or "USD"),
+                    low=_opt_float(price.get("low")),
+                    high=_opt_float(price.get("high")),
+                    basis=price.get("basis"),
+                    explanation=price.get("explanation"),
+                    withheld_reason=price.get("withheld_reason"),
+                ),
             )
         except (ValueError, KeyError, TypeError, AttributeError) as exc:
-            raise IdentificationUnavailable("identify engine returned a malformed response") from exc
+            raise ScanUnavailable("scan returned a malformed analysis") from exc
+
+    @staticmethod
+    def _comparable(raw: Any) -> Optional[Comparable]:
+        try:
+            price_type = str(raw.get("price_type") or "")
+            if price_type not in PRICE_TYPES:
+                # Untagged comparables are never shown as evidence.
+                raise ValueError(f"price_type {price_type!r}")
+            observed = raw.get("observed_at")
+            return Comparable(
+                source=str(raw.get("source") or "unknown"),
+                price=float(raw["price"]),
+                currency=str(raw.get("currency") or "USD"),
+                price_type=price_type,
+                observed_on=date.fromisoformat(str(observed)[:10]) if observed else None,
+                title=raw.get("title"),
+                url=raw.get("url"),
+                photo_url=raw.get("photo_url"),
+                differences=tuple(str(d) for d in raw.get("differences") or ()),
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            logger.warning("dropping malformed or untagged comparable: %r", raw)
+            return None
 
     def close(self) -> None:
         self._client.close()

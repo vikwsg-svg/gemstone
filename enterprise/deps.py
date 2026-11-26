@@ -10,21 +10,17 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from enterprise.db import Database
-from enterprise.engine.base import CompsEngine, IdentifyEngine
+from enterprise.engine.base import ScanEngine
 from enterprise.models import utcnow
 from enterprise.settings import EnterpriseSettings
-from enterprise.valuation.model_versions import ModelRegistry
 
 
 @dataclass
 class AppState:
     settings: EnterpriseSettings
     db: Database
-    registry: ModelRegistry
-    sandbox_engine: CompsEngine
-    live_engine: Optional[CompsEngine]
-    sandbox_identifier: Optional[IdentifyEngine] = None
-    live_identifier: Optional[IdentifyEngine] = None
+    sandbox_engine: ScanEngine
+    live_engine: Optional[ScanEngine]
     clock: Callable[[], datetime] = field(default=utcnow)
     sleep: Callable[[float], None] = field(default=time.sleep)
 

@@ -1,21 +1,23 @@
-"""Pricing-engine adapters. The enterprise layer never computes comps itself; it asks an engine."""
+"""Adapters to the GemstoneAI scan. The enterprise layer adds business plumbing, not pricing."""
 
 from enterprise.engine.base import (
-    CompsEngine,
-    EngineComp,
-    EngineResult,
-    EngineUnavailable,
-    ItemQuery,
-    MetalSpec,
-    StoneSpec,
+    AnalysisResult,
+    Comparable,
+    PendingAnalysis,
+    PhotoRef,
+    PriceContext,
+    ScanEngine,
+    ScanUnavailable,
+    UnsupportedModelVersion,
 )
 
 __all__ = [
-    "CompsEngine",
-    "EngineComp",
-    "EngineResult",
-    "EngineUnavailable",
-    "ItemQuery",
-    "MetalSpec",
-    "StoneSpec",
+    "AnalysisResult",
+    "Comparable",
+    "PendingAnalysis",
+    "PhotoRef",
+    "PriceContext",
+    "ScanEngine",
+    "ScanUnavailable",
+    "UnsupportedModelVersion",
 ]

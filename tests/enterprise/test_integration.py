@@ -53,7 +53,7 @@ def _cli(url, *args):
     return json.loads(result.stdout.strip().splitlines()[0])
 
 
-def test_full_valuation_round_trip(migrated_url):
+def test_full_scan_round_trip(migrated_url):
     db = Database(migrated_url)
     with db.engine.connect() as conn:
         tables = set(inspect(conn).get_table_names())
@@ -68,27 +68,26 @@ def test_full_valuation_round_trip(migrated_url):
     settings = EnterpriseSettings(_env_file=None, database_url=migrated_url)
     app = create_app(settings, db=db, live_engine=None, clock=Clock())
     request = {
-        "item_type": "loose_stone",
-        "stones": [{"variety": "blue sapphire", "carat": 2.1, "shape": "oval",
-                    "color_grade": "intense", "clarity": "eye clean", "origin": "Sri Lanka"}],
-        "valuation_basis": "retail_replacement",
+        "photos": [{"url": "https://photos.example.com/ring-front.jpg"},
+                   {"url": "https://photos.example.com/ring-inside-band.jpg"}],
+        "details": {"item_type": "ring", "metal": {"type": "platinum", "weight_grams": 6.4}},
+        "client_reference": "POLICY-88231/ITEM-2",
     }
     with TestClient(app) as client:
         created = client.post(f"{BASE}/scans", headers=headers, json=request)
         assert created.status_code == 201, created.text
         body = created.json()
 
-        # Contract: band, comps with source type and similarity, confidence, scenarios, ids.
-        assert body["status"] == "priced"
+        # Contract: identification, price context and comparables in one result.
+        assert body["status"] == "completed"
         assert body["synthetic_data"] is True
-        band = body["price"]["per_carat"]
-        assert 0 < band["low"] <= band["mid"] <= band["high"]
-        assert body["price"]["total"]["mid"] == pytest.approx(band["mid"] * 2.1, abs=2)
-        assert body["comps_summary"]["used"] >= 5
-        assert {c["source_type"] for c in body["comps"]} <= {"realized", "asking"}
-        assert all(0 <= c["similarity"] <= 1 and c["date"] for c in body["comps"])
-        assert {s["scenario_id"] for s in body["scenarios"]} == {"treatment:none", "treatment:heated"}
-        assert body["model_version"] == "scan-2026.11.0"
+        assert body["identification"]["status"] == "identified"
+        assert body["identification"]["summary"].startswith("Platinum ring")
+        price = body["price_context"]
+        assert price["status"] == "provided" and 0 < price["low"] <= price["high"]
+        assert body["comparables"]["total"] >= 5
+        assert {c["price_type"] for c in body["comparables"]["items"]} <= {"realized", "asking"}
+        assert body["model_version"] == "sandbox-2026.11"
         assert body["scan_id"].startswith("scn_")
 
         # Audit retrieval returns exactly what was returned at creation.
@@ -96,7 +95,7 @@ def test_full_valuation_round_trip(migrated_url):
         assert fetched.status_code == 200
         assert fetched.json() == body
 
-        # Idempotent retry does not create or bill a second valuation.
+        # Idempotent retry does not create or bill a second scan.
         replay = client.post(f"{BASE}/scans", headers=headers, json=request)
         assert replay.json()["scan_id"] == body["scan_id"]
 
@@ -109,14 +108,13 @@ def test_full_valuation_round_trip(migrated_url):
         spec = client.get(f"{BASE}/openapi.json").json()
         assert "/scans" in spec["paths"] and "/scans/batch" in spec["paths"]
 
-    # The stored row holds full inputs, comps, model version and output.
+    # The stored row holds the inputs, the full result and the model version.
     with db.session_scope() as s:
         row = s.scalars(select(Scan)).one()
         assert row.tenant_id == tenant["tenant_id"]
-        assert row.model_version == "scan-2026.11.0"
-        assert row.request_payload["stones"][0]["variety"] == "blue sapphire"
-        assert row.result["comps"] == body["comps"]
-        assert row.result["price"] == body["price"]
+        assert row.model_version == "sandbox-2026.11" and row.priced is True
+        assert row.request_payload["details"]["metal"]["weight_grams"] == 6.4
+        assert row.result == body
         assert row.engine == "sandbox"
         s.execute(text("SELECT 1"))
     db.engine.dispose()

@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -34,7 +35,7 @@ class Tenant(Base):
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    # live: valuations use the production engine. sandbox: synthetic stones only.
+    # live: scans use the production scan. sandbox: example results only.
     environment: Mapped[str] = mapped_column(String(16), nullable=False, default="live")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     # Tenant-level model version pin (a request-level pin overrides it).
@@ -71,16 +72,13 @@ class Scan(Base):
     )
     api_key_id: Mapped[str] = mapped_column(String(40), nullable=False)
     product: Mapped[str] = mapped_column(String(16), nullable=False, default="scan")
-    status: Mapped[str] = mapped_column(String(24), nullable=False)
-    valuation_basis: Mapped[str] = mapped_column(String(32), nullable=False)
-    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    model_version_source: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)  # processing | completed
+    model_version: Mapped[Optional[str]] = mapped_column(String(64))
     engine: Mapped[str] = mapped_column(String(32), nullable=False)
-    identifier: Mapped[Optional[str]] = mapped_column(String(32))
-    # The identify engine's analysis id while a scan is processing.
-    identification_ref: Mapped[Optional[str]] = mapped_column(String(64))
+    # The scan's own analysis id (used to finish a processing scan).
+    analysis_ref: Mapped[Optional[str]] = mapped_column(String(64))
     photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    comps_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    priced: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # The request exactly as validated, and the full response body as returned.
     request_payload: Mapped[dict[str, Any]] = mapped_column(JSONVariant, nullable=False)
     result: Mapped[dict[str, Any]] = mapped_column(JSONVariant, nullable=False)
@@ -138,12 +136,11 @@ class BatchJob(Base):
     )
     api_key_id: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
-    valuation_basis: Mapped[Optional[str]] = mapped_column(String(32))
     model_version: Mapped[Optional[str]] = mapped_column(String(64))
     total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     processed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     priced_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    insufficient_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unpriced_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     input_csv: Mapped[str] = mapped_column(Text, nullable=False)
     results_csv: Mapped[Optional[str]] = mapped_column(Text)

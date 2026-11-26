@@ -1,324 +1,134 @@
-"""Engine adapters: the V2 HTTP adapter contract and the synthetic sandbox."""
+"""The adapter to the backend's scan, and app wiring."""
 
 import json
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 
-from enterprise.app import create_app, live_engine_from_settings
-from enterprise.engine.base import EngineUnavailable, ItemQuery, MetalSpec, StoneSpec
-from enterprise.engine.remote import RemoteCompsEngine
-from enterprise.engine.sandbox import SandboxEngine
-from tests.enterprise.helpers import BASE, piece, stone
+from enterprise.app import live_engine_from_settings
+from enterprise.engine.base import (
+    AnalysisResult,
+    PendingAnalysis,
+    PhotoRef,
+    ScanUnavailable,
+    UnsupportedModelVersion,
+)
+from enterprise.engine.remote import RemoteScanEngine
+from enterprise.engine.sandbox import SandboxScanEngine
 
-
-def _loose(**kw):
-    s = dict(variety="blue_sapphire", carat=2.0, shape="oval", treatment="heated")
-    s.update(kw)
-    return ItemQuery(item_type="loose_stone", stones=(StoneSpec(**s),))
-
-
-QUERY = _loose()
-
-
-def _comp(i, **overrides):
-    comp = {
-        "comp_id": f"lst_{i}",
-        "source_type": "asking",
-        "source": "dealer:leibish",
-        "observed_on": "2026-08-14",
-        "currency": "USD",
-        "price_total": 2000.0,
-        "carat": 2.0,
-        "similarity": 0.9,
-        "attributes": {"variety": "blue_sapphire", "origin": "sri_lanka"},
-    }
-    comp.update(overrides)
-    return comp
+ANALYSIS = {
+    "analysis_id": "ana_123",
+    "status": "completed",
+    "model_version": "scan-v7",
+    "identification": {"status": "identified", "summary": "18k gold ring", "confidence": 0.82,
+                       "alternatives": [{"label": "14k gold", "probability": 0.1}]},
+    "observations": ["Yellow metal", "750 stamp"],
+    "open_questions": ["Weight?"],
+    "next_evidence": ["Weigh it"],
+    "price_context": {"status": "provided", "currency": "USD", "low": 900, "high": 1400,
+                      "basis": "resale", "explanation": "Mostly gold value."},
+    "gemstoneai_url": "https://app.gemstoneai.example/analysis/ana_123",
+}
+PHOTOS = [PhotoRef(sha256="a" * 64, media_type="image/jpeg", bytes=3, data=b"abc"),
+          PhotoRef(sha256="b" * 64, url="https://p.example/x.jpg")]
 
 
-def _remote(handler):
-    return RemoteCompsEngine("https://engine.internal", "secret", transport=httpx.MockTransport(handler))
+def _engine(handler):
+    return RemoteScanEngine("https://scan.internal", "k", transport=httpx.MockTransport(handler))
 
 
-def test_remote_engine_sends_contract_and_parses_comps():
+def test_analyze_sends_photos_details_and_pin_and_maps_the_result():
     seen = {}
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["path"] = request.url.path
-        seen["auth"] = request.headers["authorization"]
+    def handler(request):
+        seen["path"], seen["auth"] = request.url.path, request.headers["authorization"]
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"comps": [_comp(1), _comp(2, adjusted_price_per_carat=1200)]})
+        return httpx.Response(200, json=ANALYSIS)
 
-    result = _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=60)
-    assert seen["path"] == "/comps/search"
-    assert seen["auth"] == "Bearer secret"
-    assert seen["body"]["engine_version"] == "v2.4"
-    assert seen["body"]["limit"] == 60
-    assert seen["body"]["query"]["item_type"] == "loose_stone"
-    assert seen["body"]["query"]["stones"][0]["variety"] == "blue_sapphire"
-    assert [c.comp_id for c in result.comps] == ["lst_1", "lst_2"]
-    assert result.comps[1].adjusted_price_per_carat == 1200
-    assert result.comps[0].price_per_carat == 1000
-    assert result.breakdown_shares is None
+    result = _engine(handler).analyze(PHOTOS, {"item_type": "ring"}, "scan-v7")
+    assert seen["path"] == "/analyses" and seen["auth"] == "Bearer k"
+    assert seen["body"] == {"photos": [{"data": "YWJj", "media_type": "image/jpeg"},
+                                       {"url": "https://p.example/x.jpg"}],
+                            "details": {"item_type": "ring"}, "model_version": "scan-v7"}
+    assert isinstance(result, AnalysisResult)
+    assert result.identified and result.confidence == 0.82 and result.model_version == "scan-v7"
+    assert result.alternatives == ({"label": "14k gold", "probability": 0.1},)
+    assert result.price_context.low == 900 and result.price_context.basis == "resale"
+    # Consumer-app links are not carried into enterprise results.
+    assert "gemstoneai" not in repr(result)
 
 
-def test_remote_engine_piece_comps_and_breakdown():
-    ring = ItemQuery(item_type="ring", metal=MetalSpec(type="platinum", purity="950"))
-
+def test_pending_then_get():
     def handler(request):
-        body = json.loads(request.content)
-        assert body["query"]["metal"] == {"type": "platinum", "purity": "950", "color": None,
-                                          "weight_grams": None}
-        return httpx.Response(200, json={
-            "comps": [_comp(1, carat=None, adjusted_price_total=4500.0)],
-            "breakdown_shares": {"raw": 0.5, "make": 0.2, "market": 0.3},
-        })
+        if request.method == "POST":
+            return httpx.Response(202, json={"analysis_id": "ana_9", "status": "processing"})
+        assert request.url.path == "/analyses/ana_9"
+        return httpx.Response(200, json=ANALYSIS)
 
-    result = _remote(handler).find_comps(ring, engine_version="v2.4", limit=10)
-    assert result.comps[0].carat is None
-    assert result.comps[0].adjusted_price_total == 4500.0
-    assert result.breakdown_shares == {"raw": 0.5, "make": 0.2, "market": 0.3}
+    engine = _engine(handler)
+    assert engine.analyze(PHOTOS, {}, None) == PendingAnalysis(analysis_id="ana_9")
+    assert engine.get("ana_9").summary == "18k gold ring"
 
 
-@pytest.mark.parametrize(
-    "shares",
-    [{"raw": 0.5, "make": 0.2}, {"raw": 0.9, "make": 0.9, "market": 0.1},
-     {"raw": -0.1, "make": 0.6, "market": 0.5}, "junk"],
-)
-def test_remote_engine_ignores_bad_breakdown(shares):
+def test_comparables_are_mapped_and_untagged_ones_dropped():
     def handler(request):
-        return httpx.Response(200, json={"comps": [_comp(1)], "breakdown_shares": shares})
+        assert request.url.path == "/analyses/ana_123/comparables"
+        return httpx.Response(200, json={"status": "found", "comparables": [
+            {"source": "market", "title": "Gold ring", "url": "https://m.example/1", "price": 1100,
+             "currency": "USD", "price_type": "realized", "observed_at": "2026-08-14T10:00:00Z",
+             "differences": ["Heavier"]},
+            {"source": "dealer", "price": 1500, "price_type": "retail"},   # untagged: dropped
+            {"source": "broken"},                                          # malformed: dropped
+        ]})
 
-    assert _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=5).breakdown_shares is None
+    comps = _engine(handler).comparables("ana_123")
+    assert len(comps) == 1
+    assert comps[0].price_type == "realized" and comps[0].observed_on.isoformat() == "2026-08-14"
+    assert comps[0].differences == ("Heavier",)
 
 
-def test_remote_engine_drops_malformed_comps():
+def test_none_found_is_an_empty_list():
     def handler(request):
-        return httpx.Response(200, json={"comps": [_comp(1), {"comp_id": "broken"}, "junk"]})
+        return httpx.Response(200, json={"status": "none_found", "comparables": []})
 
-    result = _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=60)
-    assert [c.comp_id for c in result.comps] == ["lst_1"]
+    assert _engine(handler).comparables("ana_1") == []
+
+
+def test_unsupported_model_version():
+    def handler(request):
+        return httpx.Response(422, json={"error": "unsupported_model_version",
+                                         "available": ["scan-v7"]})
+
+    with pytest.raises(UnsupportedModelVersion) as exc:
+        _engine(handler).analyze(PHOTOS, {}, "scan-v1")
+    assert exc.value.requested == "scan-v1" and exc.value.available == ["scan-v7"]
 
 
 @pytest.mark.parametrize(
     "response",
-    [
-        httpx.Response(500, json={}),
-        httpx.Response(200, json={"no_comps": []}),
-        httpx.Response(200, content=b"not json"),
-    ],
+    [httpx.Response(500), httpx.Response(422, json={"error": "other"}),
+     httpx.Response(200, json={"status": "completed", "analysis_id": "a",
+                               "identification": {"status": "weird"}}),
+     httpx.Response(200, json={"status": "completed"}), httpx.Response(200, content=b"x")],
 )
-def test_remote_engine_failures_raise_unavailable(response):
-    with pytest.raises(EngineUnavailable):
-        _remote(lambda request: response).find_comps(QUERY, engine_version="v2.4", limit=5)
+def test_failures_raise_unavailable(response):
+    with pytest.raises(ScanUnavailable):
+        _engine(lambda request: response).analyze(PHOTOS, {}, None)
 
 
-def test_remote_engine_network_error_raises_unavailable():
+def test_network_error_raises_unavailable():
     def handler(request):
         raise httpx.ConnectError("refused")
 
-    with pytest.raises(EngineUnavailable):
-        _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=5)
-
-
-def test_api_maps_engine_outage_to_503_and_rejects_untagged_comps(db, settings, clock, make_tenant):
-    mode = {"fail": True}
-
-    def handler(request):
-        if mode["fail"]:
-            return httpx.Response(502)
-        comps = [_comp(i) for i in range(6)] + [_comp(99, source_type=None)]
-        return httpx.Response(200, json={"comps": comps})
-
-    app = create_app(settings, db=db, live_engine=_remote(handler), clock=clock)
-    tenant = make_tenant()
-    with TestClient(app) as c:
-        down = c.post(f"{BASE}/scans", headers=tenant.headers, json=stone())
-        assert down.status_code == 503
-        assert down.json()["error"]["code"] == "engine_unavailable"
-
-        mode["fail"] = False
-        body = c.post(f"{BASE}/scans", headers=tenant.headers, json=stone()).json()
-        assert body["status"] == "priced"
-        assert body["comps_summary"]["rejected"] == 1
-        assert body["synthetic_data"] is False
+    with pytest.raises(ScanUnavailable):
+        _engine(handler).comparables("ana_1")
 
 
 def test_live_engine_from_settings(settings):
     assert live_engine_from_settings(settings) is None
-    remote = settings.model_copy(update={"engine_backend": "remote", "engine_url": "http://x"})
-    assert isinstance(live_engine_from_settings(remote), RemoteCompsEngine)
+    remote = settings.model_copy(update={"scan_backend": "remote", "scan_url": "http://x"})
+    assert isinstance(live_engine_from_settings(remote), RemoteScanEngine)
     with pytest.raises(RuntimeError):
-        live_engine_from_settings(settings.model_copy(update={"engine_backend": "remote"}))
-    sandbox = settings.model_copy(update={"engine_backend": "sandbox"})
-    assert isinstance(live_engine_from_settings(sandbox), SandboxEngine)
-
-
-# ── sandbox ──────────────────────────────────────────────────────────────────
-
-
-def test_sandbox_is_deterministic_and_tagged():
-    a = SandboxEngine().find_comps(QUERY, engine_version="v2.4", limit=20).comps
-    b = SandboxEngine().find_comps(QUERY, engine_version="v2.4", limit=20).comps
-    assert a == b
-    assert len(a) == 20
-    assert all(c.source_type in ("realized", "asking") for c in a)
-    assert all(c.attributes["synthetic"] is True for c in a)
-    assert all(c.attributes["treatment"] == "heated" for c in a)  # known treatment filters
-    assert [c.similarity for c in a] == sorted((c.similarity for c in a), reverse=True)
-
-
-def test_sandbox_versions_differ_and_unknowns_are_empty():
-    engine = SandboxEngine()
-    v24 = engine.find_comps(QUERY, engine_version="v2.4", limit=10).comps
-    v23 = engine.find_comps(QUERY, engine_version="v2.3", limit=10).comps
-    assert [c.similarity for c in v24] != [c.similarity for c in v23]
-    assert engine.supports("v2.4") and not engine.supports("v9")
-    unknown = ItemQuery(item_type="loose_stone",
-                        stones=(StoneSpec(variety="unobtainium", carat=1, shape="oval"),))
-    assert engine.find_comps(unknown, engine_version="v2.4", limit=10).comps == []
-
-
-def test_sandbox_diamonds_split_natural_and_lab_grown():
-    engine = SandboxEngine()
-
-    def mean_ppc(growth):
-        q = _loose(variety="diamond", carat=1.0, shape="round", treatment=None, growth=growth)
-        comps = engine.find_comps(q, engine_version="v2.4", limit=25).comps
-        assert all(c.attributes["growth"] == growth for c in comps)
-        return sum(c.price_per_carat for c in comps) / len(comps)
-
-    assert mean_ppc("natural") > 5 * mean_ppc("lab_grown")
-
-
-def test_sandbox_pieces_match_item_type_center_and_maker():
-    engine = SandboxEngine()
-    ring = ItemQuery(item_type="ring", metal=MetalSpec(type="platinum", weight_grams=6.0),
-                     stones=(StoneSpec(variety="diamond", carat=1.0, growth="natural"),))
-    result = engine.find_comps(ring, engine_version="v2.4", limit=30)
-    assert result.comps and all(c.attributes["item_type"] == "ring" for c in result.comps)
-    assert all(c.attributes["center_variety"] == "diamond"
-               and c.attributes["center_growth"] == "natural" for c in result.comps)
-    assert all(c.carat is None for c in result.comps)
-    assert result.breakdown_shares is not None
-    assert sum(result.breakdown_shares.values()) == pytest.approx(1.0)
-
-    signed = ItemQuery(item_type="bracelet", metal=MetalSpec(type="gold"), brand="maison_aurelle",
-                       signed=True)
-    signed_comps = engine.find_comps(signed, engine_version="v2.4", limit=30).comps
-    assert signed_comps and {c.attributes["brand"] for c in signed_comps} == {"maison_aurelle"}
-
-    unknown_maker = ItemQuery(item_type="bracelet", metal=MetalSpec(type="gold"), brand="unknown_house")
-    assert engine.find_comps(unknown_maker, engine_version="v2.4", limit=30).comps == []
-
-
-def test_sandbox_thin_cells_trigger_floor(client, make_tenant):
-    sandbox = make_tenant(environment="sandbox")
-    body = client.post(
-        f"{BASE}/scans", headers=sandbox.headers,
-        json=stone(variety="alexandrite", origin=None, treatment="none"),
-    ).json()
-    assert body["status"] == "insufficient_data"
-    assert body["price"] is None
-
-
-def test_sandbox_unknown_maker_is_insufficient_not_guessed(client, make_tenant):
-    sandbox = make_tenant(environment="sandbox")
-    body = client.post(
-        f"{BASE}/scans", headers=sandbox.headers,
-        json=piece(item_type="bracelet", stones=None, brand="Some Famous House", signed=True,
-                   metal={"type": "gold", "purity": "18k", "weight_grams": 25}),
-    ).json()
-    assert body["status"] == "insufficient_data"
-    assert body["price"] is None and body["breakdown"] is None
-
-
-# ── identify engine (the scan's first step) ──────────────────────────────────
-
-from enterprise.app import live_identifier_from_settings  # noqa: E402
-from enterprise.engine.base import (  # noqa: E402
-    Identification,
-    IdentificationUnavailable,
-    PendingIdentification,
-    PhotoRef,
-)
-from enterprise.engine.remote import RemoteIdentifyEngine  # noqa: E402
-
-IDENTIFIED = {
-    "status": "identified",
-    "item": {"item_type": "ring", "metal": {"type": "gold", "purity": "18k"}},
-    "confidence": 0.82,
-    "summary": "18k gold ring",
-    "observations": ["Yellow metal", "750 stamp"],
-    "alternatives": [{"label": "14k gold", "probability": 0.1}],
-    "open_questions": ["Weight?"],
-    "next_evidence": ["Weigh it"],
-}
-
-
-def _identifier(handler):
-    return RemoteIdentifyEngine("https://id.internal", "k", transport=httpx.MockTransport(handler))
-
-
-def test_remote_identifier_sends_photos_and_hints():
-    seen = {}
-
-    def handler(request):
-        seen["path"] = request.url.path
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json=IDENTIFIED)
-
-    photos = [PhotoRef(sha256="a" * 64, media_type="image/jpeg", bytes=3, data=b"abc"),
-              PhotoRef(sha256="b" * 64, url="https://p.example/x.jpg")]
-    result = _identifier(handler).identify(photos, {"item_type": "ring"})
-    assert seen["path"] == "/identify"
-    assert seen["body"]["photos"] == [{"data": "YWJj", "media_type": "image/jpeg"},
-                                      {"url": "https://p.example/x.jpg"}]
-    assert seen["body"]["hints"] == {"item_type": "ring"}
-    assert isinstance(result, Identification)
-    assert result.confidence == 0.82 and result.item["item_type"] == "ring"
-    assert result.alternatives == ({"label": "14k gold", "probability": 0.1},)
-
-
-def test_remote_identifier_pending_then_poll():
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(202, json={"status": "processing", "analysis_id": "ana_123"})
-        assert request.url.path == "/identify/ana_123"
-        return httpx.Response(200, json=IDENTIFIED)
-
-    engine = _identifier(handler)
-    pending = engine.identify([PhotoRef(sha256="c" * 64, url="https://p/x.jpg")], {})
-    assert pending == PendingIdentification(ref="ana_123")
-    assert engine.poll("ana_123").summary == "18k gold ring"
-
-
-@pytest.mark.parametrize(
-    "response",
-    [httpx.Response(500), httpx.Response(200, json={"status": "weird"}),
-     httpx.Response(200, json={"status": "identified"}), httpx.Response(200, content=b"x")],
-)
-def test_remote_identifier_failures(response):
-    with pytest.raises(IdentificationUnavailable):
-        _identifier(lambda request: response).identify([], {})
-
-
-def test_live_identifier_from_settings(settings):
-    assert live_identifier_from_settings(settings) is None
-    remote = settings.model_copy(update={"identify_backend": "remote", "identify_url": "http://x"})
-    assert isinstance(live_identifier_from_settings(remote), RemoteIdentifyEngine)
-    with pytest.raises(RuntimeError):
-        live_identifier_from_settings(settings.model_copy(update={"identify_backend": "remote"}))
-
-
-def test_remote_comps_carry_links_and_differences():
-    def handler(request):
-        return httpx.Response(200, json={"comps": [_comp(
-            1, url="https://market.example/lot/1", photo_url="https://market.example/1.jpg",
-            differences=["Smaller center stone", "14k instead of 18k"])]})
-
-    comp = _remote(handler).find_comps(QUERY, engine_version="v2.4", limit=5).comps[0]
-    assert comp.url == "https://market.example/lot/1"
-    assert comp.differences == ("Smaller center stone", "14k instead of 18k")
+        live_engine_from_settings(settings.model_copy(update={"scan_backend": "remote"}))
+    sandbox = settings.model_copy(update={"scan_backend": "sandbox"})
+    assert isinstance(live_engine_from_settings(sandbox), SandboxScanEngine)
