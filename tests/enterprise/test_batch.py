@@ -129,4 +129,4 @@ def test_batch_idempotency(client, tenant, engine, db):
 
 
 def test_batch_needs_scan_scope(client, make_tenant):
-    assert _submit(client, make_tenant(scopes=("index",))).status_code == 403
+    assert _submit(client, make_tenant(scopes=("verify",))).status_code == 403

@@ -14,7 +14,6 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
@@ -136,6 +135,9 @@ class BatchJob(Base):
         String(40), ForeignKey("ent_tenants.id"), nullable=False, index=True
     )
     api_key_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    # scan | intake | verify: which product each row runs through.
+    product: Mapped[str] = mapped_column(String(16), nullable=False, default="scan",
+                                         server_default="scan")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
     model_version: Mapped[Optional[str]] = mapped_column(String(64))
     total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -153,11 +155,11 @@ class BatchJob(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
-# ── Products built on the scan (Intake, Estimate, Verify) and Index ─────────
+# ── Products built on the scan (Intake, Verify) ──────────────────────────────
 
 
 class ProductSettings(Base):
-    """Per-account configuration for a product (Intake routing rules, Estimate policy, ...)."""
+    """Per-account configuration for a product (Intake routing rules, Verify thresholds)."""
 
     __tablename__ = "ent_product_settings"
 
@@ -172,7 +174,7 @@ class ProductSettings(Base):
 
 
 class ProductRecord(Base):
-    """One Intake decision, Estimate or Verify check: the product result on top of a scan."""
+    """One Intake decision or Verify check: the product result on top of a scan."""
 
     __tablename__ = "ent_product_records"
 
@@ -195,9 +197,15 @@ class ProductRecord(Base):
         DateTime(timezone=True), nullable=False, default=utcnow
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # The person's final call after reviewing (Intake: list|review|lab|decline;
+    # Verify: confirmed|cleared), with every earlier call kept in ``review``.
+    review_outcome: Mapped[Optional[str]] = mapped_column(String(32))
+    review: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONVariant)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("ix_ent_product_records_tenant_product_created", "tenant_id", "product", "created_at"),
+        Index("ix_ent_product_records_tenant_outcome", "tenant_id", "product", "outcome"),
         Index("ix_ent_product_records_tenant_subject", "tenant_id", "product", "subject_key"),
     )
 
@@ -222,40 +230,53 @@ class PhotoFingerprint(Base):
     __table_args__ = (Index("ix_ent_photo_fingerprints_tenant_sha", "tenant_id", "sha256"),)
 
 
-class IndexSnapshot(Base):
-    """A published index level (live data only; sandbox series are generated).
+# ── Webhooks ─────────────────────────────────────────────────────────────────
 
-    Never updated in place: a correction adds a new current row and an
-    ``IndexCorrection`` entry, so every value ever published stays on record.
-    """
 
-    __tablename__ = "ent_index_snapshots"
+class WebhookEndpoint(Base):
+    """One webhook URL per account, with the secret its deliveries are signed with."""
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    series_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    period: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
-    level: Mapped[float] = mapped_column(Float, nullable=False)
-    comp_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    methodology_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    published_at: Mapped[datetime] = mapped_column(
+    __tablename__ = "ent_webhook_endpoints"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("ent_tenants.id"), nullable=False, unique=True
+    )
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    events: Mapped[list[str]] = mapped_column(JSONVariant, nullable=False)
+    # Needed in clear to sign deliveries (HMAC); shown to the customer once.
+    secret: Mapped[str] = mapped_column(String(80), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class WebhookDelivery(Base):
+    """An event queued for an account's webhook (outbox): written with the record it reports."""
+
+    __tablename__ = "ent_webhook_deliveries"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # the event id, evt_...
+    tenant_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("ent_tenants.id"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONVariant, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        Index("ix_ent_index_snapshots_series", "series_key", "period"),
-    )
-
-
-class IndexCorrection(Base):
-    __tablename__ = "ent_index_corrections"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    series_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    period: Mapped[str] = mapped_column(String(7), nullable=False)
-    old_level: Mapped[float] = mapped_column(Float, nullable=False)
-    new_level: Mapped[float] = mapped_column(Float, nullable=False)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
-    published_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow
+        Index("ix_ent_webhook_deliveries_tenant_status", "tenant_id", "status"),
+        Index("ix_ent_webhook_deliveries_tenant_created", "tenant_id", "created_at"),
     )

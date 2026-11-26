@@ -20,9 +20,7 @@
       <ul class="nav-links" id="nav-links">
         <li><a href="scan.html">Scan API</a></li>
         <li><a href="intake.html">Intake</a></li>
-        <li><a href="estimate.html">Estimate</a></li>
         <li><a href="verify.html">Verify</a></li>
-        <li><a href="price-index.html">Index</a></li>
         <li><a href="developers.html" aria-current="page">Developers</a></li>
         <li><a class="btn btn-primary btn-small" href="pilot.html">Request a pilot</a></li>
       </ul>
@@ -46,8 +44,8 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Endpoints</span>
-      <h2>Five products, one API</h2>
-      <p>Base URL <code style="font-family:var(--mono);font-size:0.9em">https://api.gemstoneaiapp.com/enterprise/v1</code>. Intake, Estimate and Verify take the same photos as a scan and return their decision together with the full scan behind it.</p>
+      <h2>Three products, one API</h2>
+      <p>Base URL <code style="font-family:var(--mono);font-size:0.9em">https://api.gemstoneaiapp.com/enterprise/v1</code>. Intake and Verify take the same photos as a scan and return their decision together with the full scan behind it.</p>
     </div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Endpoint</th><th>What it does</th></tr></thead><tbody>
 <tr><th colspan="2" class="group">Scan API &middot; scope <code>scan</code></th></tr>
@@ -60,18 +58,10 @@
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items</code></td><td>Scan a consigned item and route it: list, review, lab or decline, with reasons</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items/{id}</code></td><td>Retrieve an intake decision</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/intake/rules</code></td><td>Read or set your routing thresholds</td></tr>
-<tr><th colspan="2" class="group">Estimate &middot; scope <code>estimate</code></th></tr>
-<tr><td class="nowrap"><span class="method method-post">POST</span><code>/estimate/lots</code></td><td>Scan a lot and suggest a pre-sale estimate and reserve from realized sales</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/estimate/lots/{id}</code></td><td>Retrieve an estimate</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/estimate/policy</code></td><td>Read or set your reserve policy and rounding increments</td></tr>
 <tr><th colspan="2" class="group">Verify &middot; scope <code>verify</code></th></tr>
 <tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks</code></td><td>Scan an item and risk-check a listing, claim or appraisal</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks/{id}</code></td><td>Retrieve a risk check</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/verify/settings</code></td><td>Read or set your risk thresholds</td></tr>
-<tr><th colspan="2" class="group">Index &middot; scope <code>index</code></th></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/series</code></td><td>Every index series with its latest value</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/series/{key}</code></td><td>Monthly levels for one series, as JSON or CSV</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/index/corrections</code></td><td>Corrections to published values, with reasons</td></tr>
 <tr><th colspan="2" class="group">Account</th></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Scans per day for your account, by product</td></tr>
     </tbody></table></div>
@@ -159,9 +149,7 @@
         <ul>
           <li><a href="scan.html">Scan API</a></li>
           <li><a href="intake.html">Intake</a></li>
-          <li><a href="estimate.html">Estimate</a></li>
           <li><a href="verify.html">Verify</a></li>
-          <li><a href="price-index.html">Index</a></li>
         </ul>
       </div>
       <div>

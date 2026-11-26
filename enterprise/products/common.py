@@ -1,5 +1,5 @@
 """
-Shared machinery for the products built on the scan: Intake, Estimate, Verify.
+Shared machinery for the products built on the scan: Intake and Verify.
 
 Each product is the scan result plus one layer of rules:
 
@@ -46,7 +46,7 @@ class EvalContext:
 
 class ProductHandler(ABC):
     product: str  # usage and scope name
-    object_name: str  # "intake_item", "estimate", "verify_check"
+    object_name: str  # "intake_item", "verify_check"
     id_prefix: str
     result_key: str  # the key holding the product's block in the response
     settings_model: type[BaseModel]

@@ -6,8 +6,6 @@ Operator CLI (there is no admin console in v1).
     python -m enterprise.cli revoke-key --key-id key_...
     python -m enterprise.cli pin-model --tenant ten_... --version <scan model version>
     python -m enterprise.cli export-openapi --output docs/enterprise/openapi.json
-    python -m enterprise.cli index-publish --file gpi-2026-10.csv
-    python -m enterprise.cli index-correct --series gpi --period 2026-09 --level 104.2 --reason "..."
 
 Uses ENTERPRISE_DATABASE_URL. Schema changes go through Alembic
 (``alembic -c enterprise/alembic.ini upgrade head``); ``init-db`` exists only
@@ -22,7 +20,6 @@ import click
 
 from enterprise.auth import PRODUCTS, create_tenant, issue_api_key
 from enterprise.db import Database
-from enterprise.index import IndexPublishError, correct, publish, read_publish_file
 from enterprise.models import ApiKey, Tenant
 from enterprise.settings import get_settings
 
@@ -122,39 +119,6 @@ def export_openapi_cmd(output: str) -> None:
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(spec, indent=2, sort_keys=False) + "\n")
     click.echo(f"Wrote {output}")
-
-
-@cli.command("index-publish")
-@click.option("--file", "path", required=True, type=click.Path(exists=True, dir_okay=False),
-              help="CSV: series_key, period, level, comp_count, methodology_version.")
-def index_publish_cmd(path: str) -> None:
-    """Publish monthly index levels from the GPI calculation (all-or-nothing)."""
-    with _db().session_scope() as session:
-        try:
-            result = publish(session, read_publish_file(path), datetime.now(timezone.utc))
-        except IndexPublishError as exc:
-            raise click.ClickException(str(exc)) from exc
-        session.commit()
-        click.echo(json.dumps(result))
-
-
-@cli.command("index-correct")
-@click.option("--series", "series_key", required=True)
-@click.option("--period", required=True, help="YYYY-MM")
-@click.option("--level", required=True, type=float)
-@click.option("--comp-count", type=int, default=None, help="Default: keep the published count.")
-@click.option("--reason", required=True, help="Shown to licensees in GET /index/corrections.")
-def index_correct_cmd(series_key: str, period: str, level: float, comp_count: int | None,
-                      reason: str) -> None:
-    """Correct a published value. The original stays on record and the change is logged."""
-    with _db().session_scope() as session:
-        try:
-            result = correct(session, series_key, period, level, reason,
-                             datetime.now(timezone.utc), comp_count)
-        except IndexPublishError as exc:
-            raise click.ClickException(str(exc)) from exc
-        session.commit()
-        click.echo(json.dumps(result))
 
 
 if __name__ == "__main__":

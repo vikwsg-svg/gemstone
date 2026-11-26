@@ -134,7 +134,7 @@ def test_migrations_match_the_models(migrated_url):
         assert compare_metadata(context, Base.metadata) == []
         tables = set(inspect(conn).get_table_names())
     assert {"ent_product_records", "ent_product_settings", "ent_photo_fingerprints",
-            "ent_index_snapshots", "ent_index_corrections"} <= tables
+            "ent_webhook_endpoints", "ent_webhook_deliveries"} <= tables
     db.engine.dispose()
 
 

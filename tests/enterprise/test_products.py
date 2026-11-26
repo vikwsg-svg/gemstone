@@ -1,25 +1,19 @@
-"""Intake, Estimate and Verify: the scan plus one layer of rules each."""
+"""Intake and Verify: the scan plus one layer of rules each."""
 
 from dataclasses import replace
 
 import pytest
 
 from enterprise.engine.base import PriceContext
-from enterprise.products.estimate import DEFAULT_INCREMENTS, Increment, quantile, round_down, round_up
 from tests.enterprise.helpers import BASE, RING, comp, photo_urls
 
-ALL = ("scan", "intake", "estimate", "verify")
+ALL = ("scan", "intake", "verify")
 
 
 def priced(low: float, high: float, **kw):
     return replace(RING, price_context=PriceContext(status="provided", low=low, high=high,
                                                     basis="retail replacement",
                                                     explanation="From comparables."), **kw)
-
-
-def realized(prices, currency="USD"):
-    return [replace(comp(i, price=p, price_type="realized"), currency=currency)
-            for i, p in enumerate(prices)]
 
 
 @pytest.fixture
@@ -101,8 +95,8 @@ def test_intake_record_is_retrievable_isolated_and_metered(client, key, make_ten
 
     other = make_tenant("Other", scopes=ALL)
     assert client.get(f"{BASE}/intake/items/{body['id']}", headers=other.headers).status_code == 404
-    # The id is not an estimate either.
-    assert client.get(f"{BASE}/estimate/lots/{body['id']}", headers=key.headers).status_code == 404
+    # The id is not a Verify check either.
+    assert client.get(f"{BASE}/verify/checks/{body['id']}", headers=key.headers).status_code == 404
 
     usage = client.get(f"{BASE}/usage", headers=key.headers).json()["data"]
     assert [(u["product"], u["scans_total"]) for u in usage] == [("intake", 1)]
@@ -134,10 +128,10 @@ def test_processing_scan_completes_on_retrieval_and_is_metered_once(client, key,
 
 
 def test_product_posts_are_idempotent(client, key, engine):
-    headers = {**key.headers, "Idempotency-Key": "lot-112"}
-    payload = {"photos": photo_urls(1), "lot_number": "112"}
-    first = client.post(f"{BASE}/estimate/lots", headers=headers, json=payload)
-    second = client.post(f"{BASE}/estimate/lots", headers=headers, json=payload)
+    headers = {**key.headers, "Idempotency-Key": "cons-112"}
+    payload = {"photos": photo_urls(1), "reference": "C-112"}
+    first = client.post(f"{BASE}/intake/items", headers=headers, json=payload)
+    second = client.post(f"{BASE}/intake/items", headers=headers, json=payload)
     assert second.headers.get("Idempotent-Replayed") == "true"
     assert second.json() == first.json()
     assert len(engine.analyze_calls) == 1
@@ -148,80 +142,6 @@ def test_sandbox_keys_get_example_results(client, make_tenant):
     body = intake(client, sandbox).json()
     assert body["scan"]["synthetic_data"] is True
     assert body["routing"]["decision"] in {"list", "review", "lab", "decline"}
-
-
-# ── Estimate ─────────────────────────────────────────────────────────────────
-
-
-def estimate(client, key, **body):
-    payload = {"photos": photo_urls(1), "lot_number": "112", **body}
-    return client.post(f"{BASE}/estimate/lots", headers=key.headers, json=payload)
-
-
-def test_estimate_rounding_helpers():
-    incs = [Increment(**i) for i in DEFAULT_INCREMENTS]
-    assert quantile([1, 2, 3, 4, 5], 0.25) == 2
-    assert quantile([3000, 3500, 4000, 4500, 5000, 5500, 6000], 0.25) == 3750
-    assert round_down(3750, incs) == 3500 and round_up(5250, incs) == 6000
-    assert round_down(40, incs) == 100  # never rounds to zero
-    assert round_up(212_000, incs) == 250_000
-
-
-def test_estimate_from_realized_sales(client, key, engine):
-    engine.comps = realized([3000, 3500, 4000, 4500, 5000, 5500, 6000]) + [comp(99, price=50_000)]
-    body = estimate(client, key, sale={"house": "Example House", "sale_date": "2027-02-10"}).json()
-    est = body["estimate"]
-    assert body["object"] == "estimate" and body["reference"] == "112"
-    assert est["status"] == "estimated"
-    assert (est["low"], est["high"]) == (3500, 6000)
-    assert est["based_on"]["realized_sales"] == 7 and est["based_on"]["median"] == 4500
-    assert len(est["asking_comparables"]) == 1  # the 50,000 asking price is never used
-    assert est["reserve"] is None
-    assert any("reserve policy" in n for n in est["notes"])
-    assert "7 realized sales" in est["rationale"] and "in Oct 2026" in est["rationale"]
-    assert "1 asking price is listed separately and was not used." in est["rationale"]
-    assert est["sale"]["house"] == "Example House"
-
-
-def test_estimate_reserve_follows_house_policy(client, key, engine):
-    engine.comps = realized([3000, 3500, 4000, 4500, 5000, 5500, 6000])
-    r = client.put(f"{BASE}/estimate/policy", headers=key.headers, json={"reserve_pct_of_low": 0.8})
-    assert r.status_code == 200
-    est = estimate(client, key).json()["estimate"]
-    assert est["reserve"] == 2500  # 80% of 3,500 = 2,800, rounded down to the 500 step
-    assert "reserve would be $2,500" in est["rationale"]
-
-
-def test_no_estimate_with_fewer_than_five_realized_sales(client, key, engine):
-    engine.comps = realized([4000, 4500, 5000]) + [comp(i) for i in range(6)]
-    est = estimate(client, key).json()["estimate"]
-    assert est["status"] == "no_estimate" and est["low"] is None and est["high"] is None
-    assert "Only 3 realized sales" in est["reason"]
-    assert len(est["realized_comparables"]) == 3 and len(est["asking_comparables"]) == 6
-
-
-def test_no_estimate_when_unidentified(client, key, engine):
-    engine.result = replace(RING, identified=False, confidence=None)
-    engine.comps = realized([3000, 3500, 4000, 4500, 5000])
-    est = estimate(client, key).json()["estimate"]
-    assert est["status"] == "no_estimate" and "could not be identified" in est["reason"]
-
-
-def test_estimate_ignores_other_currencies(client, key, engine):
-    engine.comps = realized([3000, 3500, 4000, 4500]) + realized([4000, 5000], currency="GBP")
-    est = estimate(client, key).json()["estimate"]
-    assert est["status"] == "no_estimate"
-    assert "2 realized sales in other currencies were not used." in est["notes"]
-
-
-def test_estimate_policy_validation(client, key):
-    bad = client.put(f"{BASE}/estimate/policy", headers=key.headers,
-                     json={"increments": [{"up_to": 1000, "step": 100}]})
-    assert bad.status_code == 422
-    bad = client.put(f"{BASE}/estimate/policy", headers=key.headers,
-                     json={"increments": [{"up_to": 5000, "step": 500}, {"up_to": 1000, "step": 100},
-                                          {"up_to": None, "step": 1000}]})
-    assert bad.status_code == 422
 
 
 # ── Verify ───────────────────────────────────────────────────────────────────

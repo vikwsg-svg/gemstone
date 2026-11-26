@@ -1,4 +1,4 @@
-"""HTTP routes for Intake, Estimate and Verify. Each needs its own product scope."""
+"""HTTP routes for Intake and Verify. Each needs its own product scope."""
 
 from datetime import timedelta
 from typing import Any, Callable, Optional
@@ -12,11 +12,8 @@ from enterprise.auth import Principal, require_scope
 from enterprise.deps import AppState, get_db, get_state
 from enterprise.idempotency import run_idempotent
 from enterprise.products.common import ProductHandler, ProductService, scan_request_from
-from enterprise.products.estimate import EstimateHandler, EstimatePolicy
 from enterprise.products.intake import IntakeHandler, IntakeRules
 from enterprise.products.schemas import (
-    EstimateLotRequest,
-    EstimateResponse,
     IntakeItemRequest,
     IntakeItemResponse,
     VerifyCheckRequest,
@@ -36,7 +33,7 @@ _POST_ERRORS = {**_ERRORS, 503: {"model": ErrorResponse, "description": "Scan se
 _IDEMPOTENCY_DOC = ("Optional. Retrying with the same key and body returns the original response "
                     "instead of running and billing again. Kept for 24 hours.")
 
-INTAKE, ESTIMATE, VERIFY = IntakeHandler(), EstimateHandler(), VerifyHandler()
+INTAKE, VERIFY = IntakeHandler(), VerifyHandler()
 
 
 def _create(state: AppState, db: Session, principal: Principal, handler: ProductHandler,
@@ -121,59 +118,6 @@ def get_intake_rules(principal: Principal = Depends(require_scope("intake")),
 def put_intake_rules(rules: IntakeRules, principal: Principal = Depends(require_scope("intake")),
                      db: Session = Depends(get_db), state: AppState = Depends(get_state)) -> dict:
     return _put_settings(state, db, principal, INTAKE, rules)
-
-
-# ── Estimate ─────────────────────────────────────────────────────────────────
-
-
-@router.post("/estimate/lots", status_code=201, response_model=EstimateResponse,
-             responses={202: {"model": EstimateResponse, "description": "Scan still running."},
-                        **_POST_ERRORS},
-             tags=["Estimate"], summary="Suggest a pre-sale estimate and reserve for a lot",
-             description="Scans the lot, then builds the estimate from realized sales among the "
-                         "comparables (the middle half of at least 5), rounded to auction increments. "
-                         "The reserve follows your policy (`GET /estimate/policy`). With fewer than 5 "
-                         "realized sales there is no number: comparables and context only.")
-def create_estimate(
-    payload: EstimateLotRequest,
-    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key",
-                                            description=_IDEMPOTENCY_DOC),
-    principal: Principal = Depends(require_scope("estimate")),
-    db: Session = Depends(get_db),
-    state: AppState = Depends(get_state),
-) -> JSONResponse:
-    def build():
-        scan_request = scan_request_from(payload.photos, payload.details, payload.model_version,
-                                         payload.lot_number)
-        product_input = {"lot_number": payload.lot_number,
-                         "sale": payload.sale.model_dump(mode="json") if payload.sale else None}
-        return scan_request, product_input, payload.lot_number, None
-
-    return _create(state, db, principal, ESTIMATE, "POST /estimate/lots", payload, idempotency_key, build)
-
-
-@router.get("/estimate/lots/{estimate_id}", response_model=EstimateResponse,
-            responses={**_ERRORS, 404: {"model": ErrorResponse, "description": "Not found."}},
-            tags=["Estimate"], summary="Retrieve an estimate")
-def get_estimate(estimate_id: str = Path(max_length=40),
-                 principal: Principal = Depends(require_scope("estimate")),
-                 db: Session = Depends(get_db), state: AppState = Depends(get_state)) -> JSONResponse:
-    return _get(state, db, principal, ESTIMATE, estimate_id)
-
-
-@router.get("/estimate/policy", response_model=EstimatePolicy, responses=_ERRORS, tags=["Estimate"],
-            summary="Your reserve policy and rounding increments")
-def get_estimate_policy(principal: Principal = Depends(require_scope("estimate")),
-                        db: Session = Depends(get_db), state: AppState = Depends(get_state)) -> dict:
-    return ProductService(state, db, ESTIMATE).settings(principal.tenant)
-
-
-@router.put("/estimate/policy", response_model=EstimatePolicy, responses=_ERRORS, tags=["Estimate"],
-            summary="Set your reserve policy and rounding increments")
-def put_estimate_policy(policy: EstimatePolicy,
-                        principal: Principal = Depends(require_scope("estimate")),
-                        db: Session = Depends(get_db), state: AppState = Depends(get_state)) -> dict:
-    return _put_settings(state, db, principal, ESTIMATE, policy)
 
 
 # ── Verify ───────────────────────────────────────────────────────────────────

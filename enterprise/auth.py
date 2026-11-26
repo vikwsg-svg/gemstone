@@ -27,7 +27,7 @@ from enterprise.models import ApiKey, Tenant
 
 # One scope per product. Only "scan" has endpoints in v1; the rest are reserved
 # so keys can be issued for pilots without a schema change.
-PRODUCTS = ("scan", "intake", "estimate", "verify", "index")
+PRODUCTS = ("scan", "intake", "verify")
 
 KEY_PATTERN = re.compile(r"^gsk_(live|test)_([a-z0-9]{12})_([A-Za-z0-9]{32})$")
 _ID_ALPHABET = string.ascii_lowercase + string.digits

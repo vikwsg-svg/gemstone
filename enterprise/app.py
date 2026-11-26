@@ -28,7 +28,6 @@ from enterprise.engine.sandbox import SandboxScanEngine
 from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
-from enterprise.routes_index import router as index_router
 from enterprise.routes_products import router as products_router
 from enterprise.settings import EnterpriseSettings, get_settings
 
@@ -42,10 +41,7 @@ The GemstoneAI Enterprise API: the pricing and verification layer for jewelry.
   identification, the price context and the comparables behind it, each tagged as an asking price
   or a realized sale.
 * **Intake** (`/intake`): the scan plus your routing rules: list, review, lab or decline.
-* **Estimate** (`/estimate`): the scan plus a pre-sale estimate and reserve built only from realized
-  sales.
 * **Verify** (`/verify`): the scan plus risk checks on a listing, claim or appraisal.
-* **Index** (`/index`): the GemstoneAI Price Index (GPI) and sub-indices as a monthly feed.
 
 Conventions:
 
@@ -99,9 +95,7 @@ def create_enterprise_app(
         openapi_tags=[
             {"name": "Scan API", "description": "Scan jewelry and loose stones: identify and price."},
             {"name": "Intake", "description": "Route consigned items: list, review, lab or decline."},
-            {"name": "Estimate", "description": "Pre-sale estimates and reserves from realized sales."},
             {"name": "Verify", "description": "Risk signals for listings, claims and appraisals."},
-            {"name": "Index", "description": "The GemstoneAI Price Index (GPI) and sub-indices."},
             {"name": "Account", "description": "Usage and account information."},
         ],
         openapi_url="/openapi.json",
@@ -112,7 +106,6 @@ def create_enterprise_app(
     install_error_handlers(app)
     app.include_router(router)
     app.include_router(products_router)
-    app.include_router(index_router)
     return app
 
 

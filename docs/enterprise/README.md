@@ -2,8 +2,8 @@
 
 **The pricing and verification layer for jewelry, delivered as infrastructure.**
 
-GemstoneAI Enterprise sells five products to companies that price, accept, list or insure jewelry at
-volume: auction houses, luxury resale platforms, marketplaces and insurers. Coverage spans finished
+GemstoneAI Enterprise sells three products to companies that price, accept, list or insure jewelry
+at volume: insurers and appraisal platforms, luxury resale platforms and marketplaces. Coverage spans finished
 fine jewelry (including signed and period pieces), loose diamonds and gemstones. Every product builds
 on the GemstoneAI scan.
 
@@ -11,13 +11,15 @@ on the GemstoneAI scan.
 | --- | --- | --- | --- |
 | **Scan API** | Today's GemstoneAI scan result for business systems: identification, price and comparables in one call | Insurers, appraisal platforms, marketplaces | API v1 built |
 | **Intake** | Routes consigned jewelry to list now, specialist review, lab or decline | Luxury resale | API v1 built |
-| **Estimate** | Pre-sale estimates and reserves for jewelry lots, from realized sales | Auction houses | API v1 built; needs realized-price data to give numbers |
 | **Verify** | Risk-scores listings, claims and appraisals whose price, identification or photos don't add up | Marketplaces, insurers | API v1 built |
-| **Index** | Licenses the GemstoneAI Price Index (GPI) and its sub-indices as a monthly feed | Auction houses, insurers, lenders | API v1 built; serves levels published by the existing GPI calculation |
 
-**One engine, thin layers.** Intake, Estimate and Verify each run the same scan as the Scan API and
-add one layer of rules on its result; none has its own pricing. Index serves the GPI levels the
-existing calculation publishes; it does not recalculate them.
+**One engine, thin layers.** Intake and Verify each run the same scan as the Scan API and add one
+layer of rules on its result; neither has its own pricing.
+
+**Not in the suite for now:** Estimate (pre-sale estimates for auction houses) needs realized sale
+prices among the scan's comparables before it can give numbers, and Index (the GemstoneAI Price
+Index as a licensed feed) is better used as a free quarterly report that brings buyers to the other
+three. Both were built and removed; they are in this branch's git history if they come back.
 
 The product spec (the GemstoneAI Enterprise Claude Doc) also describes valuation bases, scenario
 pricing and a Raw/Make/Market breakdown. v1 deliberately leaves those out and returns today's scan
@@ -43,11 +45,9 @@ businesses need around it.
                                    │
    Postgres ent_* tables: tenants, api keys, scans (audit), idempotency, usage, batch jobs
 
- Intake / Estimate / Verify (enterprise/products/):
+ Intake / Verify (enterprise/products/):
    request ─▶ ScanService (metered under the product) ─▶ product rules ─▶ ent_product_records
                                                          (account settings)  (decision + full scan)
- Index (enterprise/index.py):
-   GPI calculation ─▶ cli index-publish ─▶ ent_index_snapshots ─▶ GET /index/series/...
 ```
 
 What the enterprise layer adds to the scan:
@@ -98,7 +98,7 @@ curl -s localhost:8000/enterprise/v1/scans \
 ```
 
 The other products work the same way with their own scope, for example
-`create-key --tenant ten_... --scopes scan,intake,estimate,verify,index`, then
+`create-key --tenant ten_... --scopes scan,intake,verify`, then
 `POST /enterprise/v1/intake/items` with the same `photos` body.
 
 Run the tests with `pytest tests/enterprise`. Set `ENTERPRISE_TEST_POSTGRES_URL` to a disposable
@@ -267,18 +267,18 @@ Every error has the same shape: `{"error": {"code": "...", "message": "...", "de
 
 ---
 
-## Intake, Estimate and Verify
+## Intake and Verify
 
-All three follow one pattern:
+Both follow one pattern:
 
 - The request carries the same `photos`, `details` and `model_version` as `POST /scans`, plus the
   product's own fields. The scan runs exactly as in the Scan API (same 5-comparable rule, same
-  sandbox behavior) and is metered under the product (`GET /usage` shows `intake`, `estimate`,
-  `verify` separately).
+  sandbox behavior) and is metered under the product (`GET /usage` shows `intake` and `verify`
+  separately).
 - The response is the product's block plus the **full scan** it was based on, so the evidence
   travels with the decision. Every record is stored and retrievable by id.
 - Each account sets its own rules (`GET`/`PUT` on the settings endpoint). The settings in force are
-  copied into every result (`rules_applied`, `settings_applied`, `reserve_policy_pct`), so a
+  copied into every result (`rules_applied`, `settings_applied`), so a
   decision can be explained later even after the rules change.
 - If the scan is still running, the POST answers `202` with `status: processing`; the GET finishes
   it. POSTs accept `Idempotency-Key`.
@@ -287,8 +287,6 @@ All three follow one pattern:
 | --- | --- | --- |
 | `POST /intake/items`, `GET /intake/items/{id}` | `intake` | Route a consigned item |
 | `GET`/`PUT /intake/rules` | `intake` | The account's routing rules |
-| `POST /estimate/lots`, `GET /estimate/lots/{id}` | `estimate` | Suggest a pre-sale estimate and reserve |
-| `GET`/`PUT /estimate/policy` | `estimate` | Reserve policy and rounding increments |
 | `POST /verify/checks`, `GET /verify/checks/{id}` | `verify` | Risk-check a listing, claim or appraisal |
 | `GET`/`PUT /verify/settings` | `verify` | Risk thresholds |
 
@@ -307,24 +305,6 @@ decision is one of `list`, `review`, `lab`, `decline`, with coded reasons, appli
 
 `prefill` suggests listing fields (title, price range, open questions) from the scan, labelled as
 suggestions; treatment, origin and maker attribution are never filled in as fact.
-
-### Estimate
-
-Extra fields: `lot_number` and `sale` (house, sale name, venue, date; stored, not used for the
-number). The estimate uses **only realized sales** among the scan's comparables, in the scan's
-currency:
-
-- At least 5: low and high are the 25th and 75th percentiles, rounded down and up to auction
-  increments (100 below 1,000; 500 below 5,000; 1,000 below 20,000; 5,000 below 50,000; 10,000 below
-  200,000; then 50,000; each account can set its own). A `rationale` paragraph a specialist can edit
-  states the count, period and median.
-- Fewer than 5, or not identified: `status: no_estimate` with the reason, and the comparables shown
-  for reference.
-- Reserve: `reserve_pct_of_low` × low, rounded down, only once the house has set that policy.
-- Asking prices are listed separately and never used.
-
-Until realized-price sources feed the scan's comparables (see "Data: realized vs asking"), most
-items will get `no_estimate`. That is intended: no number without realized evidence.
 
 ### Verify
 
@@ -348,33 +328,6 @@ seller window are account settings). Price checks run only against a scan price 
 currency. Photos are matched by exact fingerprint (uploaded bytes or URL) within the account only,
 so a re-encoded or cropped copy is not caught. Every result says: a risk signal for review, not an
 authentication or certification.
-
----
-
-## Index
-
-The GemstoneAI Price Index (GPI) and its sub-indices as a monthly feed (scope `index`). Index does
-not calculate anything: the existing GPI calculation hands monthly levels to the operator, who
-publishes them with `python -m enterprise.cli index-publish --file levels.csv` (columns
-`series_key, period, level, comp_count, methodology_version`; all-or-nothing; re-publishing the same
-value is a no-op).
-
-| Method and path | Purpose |
-| --- | --- |
-| `GET /index/series` | The series with their latest values |
-| `GET /index/series/{key}?start=YYYY-MM&end=YYYY-MM&format=json\|csv` | Monthly levels for one series |
-| `GET /index/corrections?series=&since=` | Every correction, with old and new level and the reason |
-
-Series keys: `gpi` (headline), `diamonds-natural`, `diamonds-lab-grown`, `colored-gemstones`,
-`signed-jewelry`, `period-jewelry`, `gold-platinum`.
-
-Each monthly value carries its comparable count, `thin: true` below 30 comparables, month-on-month
-and year-on-year change (computed in one place, only against the exact previous month or the same
-month a year earlier), and `revised`. **Published values are never overwritten:**
-`index-correct --series gpi --period 2026-09 --level 104.6 --reason "..."` keeps the original row,
-adds the corrected one and logs the change for licensees. Index calls are not metered; it is
-licensed as a feed. Sandbox keys get generated example series (base 100 = January 2023, the headline
-built from the sub-indices) with `synthetic_data: true`.
 
 ---
 
@@ -408,7 +361,7 @@ expect most comparables to be asking prices until realized-price sources are add
 Verified against SQLite and Postgres 16. Do not run against production without review.
 
 **Operator CLI** (`python -m enterprise.cli --help`): `create-tenant`, `create-key`, `revoke-key`,
-`pin-model`, `index-publish`, `index-correct`, `export-openapi`, `init-db` (SQLite only).
+`pin-model`, `export-openapi`, `init-db` (SQLite only).
 
 ## Known limitations (v1)
 
@@ -421,11 +374,5 @@ Verified against SQLite and Postgres 16. Do not run against production without r
 - Batch jobs run in-process after the response. `process_batch_job` is a plain function, ready to
   move onto the existing Celery workers; a job interrupted by a restart stays `running`.
 - No admin console, SSO, billing or webhooks (out of scope for v1).
-- Intake, Estimate and Verify take one item per call; a CSV batch for them is not built yet (the
-  Scan API batch can be reused).
-- Estimate needs realized sales among the scan's comparables; it has no back-test against hammer
-  prices yet, and does not model sell-through risk.
 - Verify cannot yet check a lab report number against the stone, match edited or cropped copies of
   a photo, or compare stated materials field by field: those need data from the backend.
-- Index has no per-series licensing (one `index` scope covers all series), and sub-indices by
-  species, origin and size band need the GPI calculation to publish them.

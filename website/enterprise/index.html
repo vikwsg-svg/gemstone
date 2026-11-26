@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GemstoneAI Enterprise</title>
-<meta name="description" content="The pricing and verification layer for jewelry: valuation, intake triage, auction estimates, listing risk and price index data for fine jewelry, diamonds and gemstones.">
+<meta name="description" content="The pricing and verification layer for jewelry: scan results with prices and comparables, consignment intake routing, and listing and claim risk for fine jewelry, diamonds and gemstones.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
@@ -20,9 +20,7 @@
       <ul class="nav-links" id="nav-links">
         <li><a href="scan.html">Scan API</a></li>
         <li><a href="intake.html">Intake</a></li>
-        <li><a href="estimate.html">Estimate</a></li>
         <li><a href="verify.html">Verify</a></li>
-        <li><a href="price-index.html">Index</a></li>
         <li><a href="developers.html">Developers</a></li>
         <li><a class="btn btn-primary btn-small" href="pilot.html">Request a pilot</a></li>
       </ul>
@@ -40,7 +38,7 @@
         <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
         <a class="btn btn-secondary" href="scan.html">See how the Scan API works</a>
       </div>
-      <p class="hero-note">For auction houses, luxury resale platforms, marketplaces and insurers.</p>
+      <p class="hero-note">For insurers and appraisal platforms, luxury resale platforms and marketplaces.</p>
     </div>
     <figure class="vcard" aria-label="Example Scan API result for a ring">
   <div class="vcard-head">
@@ -76,18 +74,16 @@
 <section class="section-alt">
   <div class="container">
     <div class="section-head">
-      <span class="eyebrow">Five products, one engine</span>
+      <span class="eyebrow">Three products, one engine</span>
       <h2>Buy the one your team needs. Add the rest when it pays.</h2>
-      <p>Each product is a separate line on your contract with its own success metric. All five run on the same comparables engine, so a number means the same thing everywhere.</p>
+      <p>Each product is a separate line on your contract with its own success metric. All three run on the same scan, so a number means the same thing everywhere.</p>
     </div>
     <div class="products">
       <a class="product" href="scan.html"><span class="num">01</span><h3>Scan API</h3><span class="pill pill-live">Pilot available</span><p>Your GemstoneAI scan result, built for business systems: what a piece is, what it&rsquo;s worth and the comparables behind it.</p><span class="buyer"><strong>For</strong>Insurers, appraisal platforms, marketplaces</span><span class="more">Explore the Scan API &rarr;</span></a>
       <a class="product" href="intake.html"><span class="num">02</span><h3>Intake</h3><span class="pill pill-live">Pilot available</span><p>Routes consigned jewelry to list now, specialist review, lab or decline, by your rules.</p><span class="buyer"><strong>For</strong>Luxury resale and consignment</span><span class="more">Explore Intake &rarr;</span></a>
-      <a class="product" href="estimate.html"><span class="num">03</span><h3>Estimate</h3><span class="pill pill-early">Early access</span><p>Pre-sale estimates and reserves for jewelry lots, built only from realized sales.</p><span class="buyer"><strong>For</strong>Auction houses</span><span class="more">Explore Estimate &rarr;</span></a>
-      <a class="product" href="verify.html"><span class="num">04</span><h3>Verify</h3><span class="pill pill-live">Pilot available</span><p>Risk-scores listings and claims whose price, identification or photos don&rsquo;t add up.</p><span class="buyer"><strong>For</strong>Marketplaces and insurers</span><span class="more">Explore Verify &rarr;</span></a>
-      <a class="product" href="price-index.html"><span class="num">05</span><h3>Index</h3><span class="pill pill-early">Early access</span><p>Price indices for jewelry, diamonds and gemstones, as feeds and reports.</p><span class="buyer"><strong>For</strong>Strategy, finance, lenders</span><span class="more">Explore Index &rarr;</span></a>
+      <a class="product" href="verify.html"><span class="num">03</span><h3>Verify</h3><span class="pill pill-live">Pilot available</span><p>Risk-scores listings and claims whose price, identification or photos don&rsquo;t add up.</p><span class="buyer"><strong>For</strong>Marketplaces and insurers</span><span class="more">Explore Verify &rarr;</span></a>
     </div>
-    <div class="engine-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Every product builds on the Scan API. Intake routes each scan, Estimate starts from its realized comparables, Verify checks a listing or claim against it, and Index aggregates the same comparables.</span></div>
+    <div class="engine-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Every product builds on the Scan API. Intake routes each scan by your rules, and Verify checks a listing or claim against it.</span></div>
   </div>
 </section>
 
@@ -110,11 +106,10 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Who it&rsquo;s for</span>
-      <h2>Four kinds of teams, four different problems.</h2>
+      <h2>Three kinds of teams, three different problems.</h2>
     </div>
     <div class="segments">
       <div class="segment"><h3>Luxury resale</h3><p>Thousands of jewelry consignments a month, limited specialist hours, and pricing errors that leak margin.</p><p class="lead">Start with <a href="intake.html">Intake</a>, then <a href="scan.html">the Scan API</a></p></div>
-      <div class="segment"><h3>Auction houses</h3><p>Lower-value jewelry lots need faster, documented estimates, especially for online sales.</p><p class="lead">Start with <a href="estimate.html">Estimate</a>, then <a href="price-index.html">Index</a></p></div>
       <div class="segment"><h3>Marketplaces</h3><p>Misdescribed jewelry, lab-grown sold as natural, price anomalies, chargebacks and buyer trust.</p><p class="lead">Start with <a href="verify.html">Verify</a>, then <a href="scan.html">the Scan API</a></p></div>
       <div class="segment"><h3>Insurers and appraisal platforms</h3><p>Appraisal cost and delay at binding, and inflated claims at settlement.</p><p class="lead">Start with <a href="scan.html">the Scan API</a>, then <a href="verify.html">Verify</a></p></div>
     </div>
@@ -141,7 +136,7 @@
       <h2>Prove it on your own items before you commit.</h2>
     </div>
     <div class="steps">
-      <div class="step"><h3>Scope</h3><p>Pick one product and one workflow, such as revaluing a policy portfolio or drafting estimates for an online sale.</p></div>
+      <div class="step"><h3>Scope</h3><p>Pick one product and one workflow, such as revaluing a policy portfolio or routing a month of consignments.</p></div>
       <div class="step"><h3>Agree the metric</h3><p>We agree in writing how success is measured, on a holdout of 200+ of your own items, before anything runs.</p></div>
       <div class="step"><h3>Run for 60 days</h3><p>Your team uses the sandbox, then the live API or CSV batch, inside its existing process.</p></div>
       <div class="step"><h3>Decide</h3><p>If you convert, the pilot fee is credited to your first year.</p></div>
@@ -174,9 +169,7 @@
         <ul>
           <li><a href="scan.html">Scan API</a></li>
           <li><a href="intake.html">Intake</a></li>
-          <li><a href="estimate.html">Estimate</a></li>
           <li><a href="verify.html">Verify</a></li>
-          <li><a href="price-index.html">Index</a></li>
         </ul>
       </div>
       <div>
