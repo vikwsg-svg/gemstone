@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scan API | GemstoneAI Enterprise</title>
+<meta name="description" content="The Scan API returns what a piece of jewelry is, what it is worth and the comparables behind it, in one call.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html" aria-current="page">Scan API</a></li>
+      <li><a href="intake.html">Intake</a></li>
+      <li><a href="verify.html">Verify</a></li>
+      <li><a href="developers.html">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
+  </div>
+</header>
+<main id="main">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <div class="hero-tag"><span class="pill">Pilot available</span><span class="label">Scan API</span></div>
+      <h1>The GemstoneAI scan, built for your systems.</h1>
+      <p class="lede">Send photos of a piece of jewelry or a loose stone. One response tells you what it is, what it&rsquo;s worth and which sales and listings back that up.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+        <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
+      </div>
+    </div>
+    <figure class="report" aria-label="Example Scan API result">
+  <div class="report-head"><b>Scan result</b><span class="mono">scn_01M87FMN3YG6&hellip; &middot; sandbox-2026.11</span></div>
+  <div class="report-body">
+    <div class="rrow"><span class="label">Identified</span><div>Platinum ring with an oval blue sapphire of about 2.1&nbsp;ct and diamond side stones<div class="sub">86% confidence</div><div class="chips"><span class="alt">blue spinel center 8%</span><span class="alt">lab-grown sapphire 6%</span></div></div></div>
+    <div class="rrow"><span class="label">Price</span><div><div class="big">$2,400 &ndash; $6,600</div><div class="sub">Retail replacement. Unheated stones sit at the top and above.</div></div></div>
+    <div class="rrow"><span class="label">Comparables</span><div>
+      <table class="comps"><tbody>
+        <tr><td><span class="chip c-sold">Sold</span></td><td>Sapphire and diamond ring, platinum<span class="sim">Jul 2025 &middot; larger center stone</span></td><td>$5,200</td></tr>
+        <tr><td><span class="chip c-sold">Sold</span></td><td>Platinum sapphire ring, 2.0&nbsp;ct<span class="sim">Jan 2026 &middot; plain band</span></td><td>$3,900</td></tr>
+        <tr><td><span class="chip c-asking">Asking</span></td><td>Platinum sapphire ring, 2.10&nbsp;ct<span class="sim">Jun 2024 &middot; fewer side stones</span></td><td>$9,448</td></tr>
+      </tbody></table>
+      <div class="sub">8 found: 3 sold, 5 asking</div>
+    </div></div>
+  </div>
+  <figcaption class="report-foot"><span>Sandbox example, not a real scan</span><span>One API call</span></figcaption>
+</figure>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What comes back</h2>
+    </div>
+    <div class="grid3"><div class="card"><h3>What it is</h3><p>The identification, how sure the scan is, what else it could be, and the evidence that would settle it.</p></div><div class="card"><h3>What it&rsquo;s worth</h3><p>A price range and the kind of value it is, such as retail replacement or resale. Or the reason there is no price.</p></div><div class="card"><h3>Why</h3><p>The comparables behind the price, each labelled sold or asking, with source, date and how it differs from your item.</p></div></div>
+    <p class="caption">Every response carries a scan ID and the model version, and is stored for audit.</p>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Rules it keeps</h2>
+    </div>
+    <div class="facts three"><div class="fact"><h3>Five comparables or no price</h3><p>Below five, the price is withheld with the reason. The comparables it found are still returned.</p></div><div class="fact"><h3>Sold and asking kept apart</h3><p>Auction and resale teams judge by realized prices, so every comparable says which it is.</p></div><div class="fact"><h3>Pin a model version</h3><p>Keep results consistent across a policy term or a sale. Every result names the model that produced it.</p></div></div>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Plug it into what you run</h2>
+    </div>
+    <div class="grid3"><div class="card"><h3>REST API</h3><p>Scoped API keys and safe retries. Slow scans answer at once and finish on retrieval.</p></div><div class="card"><h3>Spreadsheet batch</h3><p>Revalue a portfolio: one row of photo links per item in, one result per row out.</p></div><div class="card"><h3>Sandbox</h3><p>Example results for every case, so your engineers can build before the pilot starts.</p></div></div>
+    <div class="api-strip"><span class="label">In the API</span><code>POST /scans</code><code>GET /scans/{id}</code><code>POST /scans/batch</code><a href="developers.html">Endpoints and examples &rarr;</a></div>
+  </div>
+</section>
+<section class="cta">
+  <div class="wrap cta-inner">
+    <div>
+      <h2>Pilot it on 200 of your own items</h2>
+      <p>We measure the median error against your own final values, and coverage: the share of items that get a price.</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+      <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
+    </div>
+    <div class="footer-base">
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+    </div>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

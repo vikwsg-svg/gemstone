@@ -25,7 +25,10 @@ gemstone = "scripts.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["crawler*", "scrapers*", "validators*", "dedupe*", "storage*", "orchestrator*", "scripts*", "config*"]
+include = ["crawler*", "scrapers*", "validators*", "dedupe*", "storage*", "orchestrator*", "scripts*", "config*", "enterprise*"]
+
+[tool.setuptools.package-data]
+enterprise = ["alembic.ini", "console/*.html", "console/*.js", "console/*.css"]
 
 [tool.black]
 line-length = 100

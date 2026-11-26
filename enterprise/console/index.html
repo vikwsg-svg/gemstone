@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>GemstoneAI Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <div class="bar-inner">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="brand-name">GemstoneAI</span><span class="brand-sub">Console</span>
+    </div>
+    <nav class="tabs" id="tabs" hidden></nav>
+    <div class="who" id="who" hidden>
+      <span id="who-name"></span>
+      <span class="pill pill-sandbox" id="who-sandbox" hidden>Sandbox</span>
+      <button class="btn btn-quiet" id="sign-out" type="button">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="signin" id="signin">
+    <div class="card signin-card">
+      <h1>Sign in</h1>
+      <p class="muted">Paste your API key. It stays in this browser tab and is cleared when you close it.</p>
+      <form id="signin-form">
+        <label class="field"><span>API key</span>
+          <input id="signin-key" type="password" autocomplete="off" spellcheck="false" placeholder="gsk_test_…" required>
+        </label>
+        <button class="btn btn-primary" type="submit">Sign in</button>
+        <p class="error" id="signin-error" role="alert"></p>
+      </form>
+      <p class="muted small">Sandbox keys (<code>gsk_test_</code>) return example results, so you can try everything without real items.</p>
+    </div>
+  </section>
+
+  <!-- Intake station -->
+  <section class="view" id="view-intake" hidden>
+    <div class="stats" id="intake-stats"></div>
+    <div class="cols">
+      <div class="col-main">
+        <form class="card" id="intake-form">
+          <div class="card-head"><h2>New consignment</h2><span class="muted small">Scan, then route by your rules</span></div>
+          <div class="photo-drop">
+            <label class="field"><span>Photos (1&ndash;5): front, side, stamps and marks</span>
+              <input id="intake-files" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" multiple>
+            </label>
+            <div class="thumbs" id="intake-thumbs"></div>
+            <details class="links"><summary>Or use photo links</summary>
+              <textarea id="intake-urls" rows="2" placeholder="https://… one per line"></textarea>
+            </details>
+          </div>
+          <label class="field"><span>What the consignor says it is</span>
+            <textarea id="intake-desc" rows="2" maxlength="1000" placeholder="e.g. Platinum diamond ring, inherited, about 1 carat"></textarea>
+          </label>
+          <div class="row3">
+            <label class="field"><span>Your reference</span><input id="intake-ref" maxlength="128" placeholder="CONS-20931"></label>
+            <label class="field"><span>Item type</span>
+              <select id="intake-type"><option value="">Not sure</option><option>ring</option><option>necklace</option><option>pendant</option><option>earrings</option><option>bracelet</option><option>brooch</option><option value="loose_stone">loose stone</option><option>other</option></select>
+            </label>
+            <label class="field"><span>Metal</span>
+              <select id="intake-metal"><option value="">Not sure</option><option>gold</option><option>platinum</option><option>silver</option><option>palladium</option><option>other</option></select>
+            </label>
+          </div>
+          <div class="form-foot">
+            <button class="btn btn-primary" id="intake-submit" type="submit">Scan and route</button>
+            <span class="error" id="intake-error" role="alert"></span>
+          </div>
+        </form>
+        <div id="intake-detail"></div>
+      </div>
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-head"><h2>Recent items</h2>
+            <select id="intake-filter" aria-label="Filter the queue">
+              <option value="">All decisions</option><option value="list">List</option><option value="review">Review</option><option value="lab">Lab</option><option value="decline">Decline</option><option value="__awaiting">Awaiting final call</option>
+            </select>
+          </div>
+          <ul class="queue" id="intake-queue"></ul>
+          <a class="small" id="intake-export" href="#">Export as CSV</a>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Verify queue -->
+  <section class="view" id="view-verify" hidden>
+    <div class="stats" id="verify-stats"></div>
+    <div class="cols">
+      <div class="col-main">
+        <div class="card">
+          <div class="card-head"><h2>Review queue</h2>
+            <div class="seg" role="group" aria-label="Which checks">
+              <button type="button" class="on" data-mode="open">Open flags</button>
+              <button type="button" data-mode="reviewed">Reviewed</button>
+              <button type="button" data-mode="all">All checks</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="qtable"><thead><tr><th>Risk</th><th>Listing or claim</th><th>Stated</th><th>What fired</th><th>Action</th></tr></thead><tbody id="verify-queue"></tbody></table></div>
+          <a class="small" id="verify-export" href="#">Export as CSV</a>
+        </div>
+        <div id="verify-detail"></div>
+      </div>
+      <aside class="col-side">
+        <form class="card" id="verify-form">
+          <div class="card-head"><h2>Check an item</h2></div>
+          <label class="field"><span>Photos</span><input id="verify-files" type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple></label>
+          <div class="thumbs" id="verify-thumbs"></div>
+          <details class="links"><summary>Or use photo links</summary><textarea id="verify-urls" rows="2" placeholder="https://… one per line"></textarea></details>
+          <div class="row2">
+            <label class="field"><span>Type</span><select id="verify-type"><option>listing</option><option>claim</option><option>appraisal</option></select></label>
+            <label class="field"><span>Its id</span><input id="verify-ext" maxlength="128" placeholder="L-55120" required></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Seller or claimant</span><input id="verify-seller" maxlength="128"></label>
+            <label class="field"><span>Stated value (USD)</span><input id="verify-value" type="number" min="1" step="any"></label>
+          </div>
+          <div class="form-foot">
+            <button class="btn btn-primary" id="verify-submit" type="submit">Run check</button>
+            <span class="error" id="verify-error" role="alert"></span>
+          </div>
+        </form>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="view" id="view-settings" hidden>
+    <div class="cols cols-even">
+      <form class="card" id="rules-intake" hidden>
+        <div class="card-head"><h2>Intake routing rules</h2></div>
+        <div class="fields" id="rules-intake-fields"></div>
+        <div class="form-foot"><button class="btn btn-primary" type="submit">Save rules</button><span class="note" role="status"></span></div>
+      </form>
+      <form class="card" id="rules-verify" hidden>
+        <div class="card-head"><h2>Verify thresholds</h2></div>
+        <div class="fields" id="rules-verify-fields"></div>
+        <div class="form-foot"><button class="btn btn-primary" type="submit">Save thresholds</button><span class="note" role="status"></span></div>
+      </form>
+      <form class="card" id="webhook-form">
+        <div class="card-head"><h2>Webhook</h2><span class="muted small">Get told when results are ready</span></div>
+        <label class="field"><span>Endpoint URL (https)</span><input id="webhook-url" type="url" placeholder="https://your-system.example.com/gemstoneai"></label>
+        <div class="checks" id="webhook-events"></div>
+        <div class="secret" id="webhook-secret" hidden></div>
+        <div class="form-foot">
+          <button class="btn btn-primary" type="submit">Save</button>
+          <button class="btn btn-quiet" type="button" id="webhook-test">Send test event</button>
+          <span class="note" role="status" id="webhook-note"></span>
+        </div>
+        <h3 class="subhead">Recent deliveries</h3>
+        <ul class="deliveries" id="webhook-deliveries"></ul>
+      </form>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

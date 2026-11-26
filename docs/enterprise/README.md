@@ -1,0 +1,466 @@
+# GemstoneAI Enterprise
+
+**The pricing and verification layer for jewelry, delivered as infrastructure.**
+
+GemstoneAI Enterprise sells three products to companies that price, accept, list or insure jewelry
+at volume: insurers and appraisal platforms, luxury resale platforms and marketplaces. Coverage spans finished
+fine jewelry (including signed and period pieces), loose diamonds and gemstones. Every product builds
+on the GemstoneAI scan.
+
+| Product | What it does | First buyer | Status |
+| --- | --- | --- | --- |
+| **Scan API** | Today's GemstoneAI scan result for business systems: identification, price and comparables in one call | Insurers, appraisal platforms, marketplaces | API v1 built |
+| **Intake** | Routes consigned jewelry to list now, specialist review, lab or decline | Luxury resale | API v1 built |
+| **Verify** | Risk-scores listings, claims and appraisals whose price, identification or photos don't add up | Marketplaces, insurers | API v1 built |
+
+**One engine, thin layers.** Intake and Verify each run the same scan as the Scan API and add one
+layer of rules on its result; neither has its own pricing.
+
+**Not in the suite for now:** Estimate (pre-sale estimates for auction houses) needs realized sale
+prices among the scan's comparables before it can give numbers, and Index (the GemstoneAI Price
+Index as a licensed feed) is better used as a free quarterly report that brings buyers to the other
+three. Both were built and removed; they are in this branch's git history if they come back.
+
+The product spec (the GemstoneAI Enterprise Claude Doc) also describes valuation bases, scenario
+pricing and a Raw/Make/Market breakdown. v1 deliberately leaves those out and returns today's scan
+result as it is.
+
+---
+
+## How it works
+
+The Scan API does not price anything itself. It runs the existing GemstoneAI scan and adds what
+businesses need around it.
+
+```
+ Customer system ──HTTPS──▶  /enterprise/v1  (separate FastAPI app, own OpenAPI)
+                                   │
+                    API key → tenant (scoped), Idempotency-Key handling
+                                   │
+                    ScanService (enterprise/scan.py)
+                      1. analyze: photos (+ known details)  ─┐
+                      2. wait, or answer "processing"        ├─▶ GemstoneAI scan (backend)
+                      3. comparables for the analysis       ─┘    RemoteScanEngine, or the
+                      4. 5-comparable rule, store, meter           SandboxScanEngine for gsk_test_ keys
+                                   │
+   Postgres ent_* tables: tenants, api keys, scans (audit), idempotency, usage, batch jobs
+
+ Intake / Verify (enterprise/products/):
+   request ─▶ ScanService (metered under the product) ─▶ product rules ─▶ ent_product_records
+                                                         (account settings)  (decision + full scan)
+   queue, final call (review), stats, CSV batch ◀──────────────────────────────┘
+   webhook events ─▶ ent_webhook_deliveries (outbox) ─▶ signed POST to the customer
+
+ Console (/enterprise/v1/console/): a browser app on the same public endpoints
+```
+
+What the enterprise layer adds to the scan:
+
+1. **One call, one result:** identification, price context and comparables together.
+2. **Business plumbing:** per-customer API keys with product scopes, every result stored and
+   retrievable by ID, safe retries, daily usage counts, CSV batch.
+3. **A version stamp** on every result, with an optional pin per request or per account.
+4. **One rule:** no price with fewer than 5 comparables (the reason is given and the comparables
+   found are still returned).
+
+**Isolation.** The enterprise API is its own FastAPI app (`enterprise/app.py`) with its own routes,
+auth, errors and OpenAPI document, and its own `ent_` tables migrated by a separate Alembic history
+(`ent_alembic_version`). To serve it from the main backend:
+`backend_app.mount("/enterprise/v1", create_enterprise_app())`. Links into the consumer app are not
+carried into enterprise results, and enterprise scans should not appear in or count against any
+consumer account (a backend-side requirement).
+
+**The backend connection.** `enterprise/engine/remote.py` documents the three endpoints the adapter
+calls: `POST /analyses`, `GET /analyses/{id}` and `GET /analyses/{id}/comparables`. Their field
+names mirror what today's scan returns but are a proposal: check them against a real scan result and
+adjust the two mapping functions in that file. Until it is connected, live tenants get
+`503 scan_unavailable`, never a silent fallback to example data.
+
+---
+
+## Quickstart (local)
+
+```bash
+pip install -r requirements.txt
+export ENTERPRISE_DATABASE_URL=sqlite:///./data/enterprise.db
+python -m enterprise.cli init-db                      # local SQLite only; use Alembic elsewhere
+
+python -m enterprise.cli create-tenant --name "Demo Insurer" --environment sandbox
+python -m enterprise.cli create-key --tenant ten_01M8... --scopes scan
+# {"key_id": "key_...", "api_key": "gsk_test_..."}   <- shown once
+
+uvicorn --factory enterprise.app:create_app --reload
+# Interactive docs: http://localhost:8000/enterprise/v1/docs
+
+curl -s localhost:8000/enterprise/v1/scans \
+  -H "Authorization: Bearer gsk_test_..." \
+  -H "Idempotency-Key: demo-1" \
+  -H "Content-Type: application/json" \
+  -d '{"photos": [{"url": "https://photos.example.com/ring-front.jpg"},
+                  {"url": "https://photos.example.com/ring-inside-band.jpg"}],
+       "details": {"item_type": "ring", "metal": {"type": "platinum", "weight_grams": 6.4}}}'
+```
+
+The other products work the same way with their own scope, for example
+`create-key --tenant ten_... --scopes scan,intake,verify`, then open the console at
+http://localhost:8000/enterprise/v1/console/ and sign in with the key, or
+`POST /enterprise/v1/intake/items` with the same `photos` body.
+
+Run the tests with `pytest tests/enterprise`. Set `ENTERPRISE_TEST_POSTGRES_URL` to a disposable
+Postgres database to also run the integration test on Postgres.
+
+---
+
+## Scan API v1 contract
+
+Base URL: `https://api.gemstoneaiapp.com/enterprise/v1`. The machine-readable contract is
+[`openapi.json`](openapi.json) (regenerate with `python -m enterprise.cli export-openapi`; a test
+fails if it drifts from the code).
+
+### Authentication
+
+Send `Authorization: Bearer <key>` (or `X-API-Key: <key>`). Keys belong to one account and carry
+per-product scopes; Scan API endpoints need the `scan` scope. `gsk_live_` keys use the real scan.
+`gsk_test_` keys return example results, and every such response has `synthetic_data: true`. Keys
+are stored as SHA-256 hashes and shown once at creation.
+
+### Endpoints
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /scans` | Scan one piece of jewelry or loose stone |
+| `GET /scans/{scan_id}` | Retrieve a scan as it was returned (audit), or the result of one still running |
+| `POST /scans/batch` | Upload a CSV; starts an async job |
+| `GET /scans/batch/{job_id}` | Job status and counts |
+| `GET /scans/batch/{job_id}/results` | Results CSV |
+| `GET /usage` | Scans per day for your account, by product (`start_date`, `end_date`) |
+| `GET /account` | The account and key making the request: environment and scopes |
+
+### `POST /scans` request
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `photos[]` | yes, 1-5 | Each `{"url": "https://..."}` or `{"data": "<base64>", "media_type": "image/jpeg"}` (png, webp and heic too; up to 8 MB). Front, side, and any stamps inside the band or on the clasp. |
+| `details` | no | What you already know, passed to the scan as hints: `item_type`, `metal` (`type`, `purity`, `color`, `weight_grams`), `brand`, `signed`, `era`, `condition`, `lab`, `lab_report_number`, `notes` |
+| `model_version` | no | Pin a scan model version (overrides your account's pin) |
+| `client_reference` | no | Your identifier, echoed back |
+
+Unknown fields are rejected (`422 invalid_request`). Image bytes are sent to the scan and never
+stored; the scan record keeps each photo's sha256, media type, size and URL.
+
+### `POST /scans` response (sandbox example)
+
+```jsonc
+{
+  "object": "scan",
+  "scan_id": "scn_01M8CHV49ESFQ5336GAQVF9YJQ",
+  "created_at": "2026-11-26T18:28:17Z",
+  "status": "completed",                    // or "processing" (HTTP 202)
+  "product": "scan",
+  "model_version": "sandbox-2026.11",
+  "synthetic_data": true,                   // sandbox only
+  "client_reference": "POLICY-88231/ITEM-2",
+  "inputs": { "photos": [ { "sha256": "...", "url": "https://photos.example.com/ring.jpg", "...": "..." } ],
+              "details": { "item_type": "ring", "metal": { "type": "platinum", "weight_grams": 6.4 } }, "...": "..." },
+  "identification": {
+    "status": "identified",                 // identified | unidentified | processing
+    "summary": "Platinum ring with an oval blue sapphire of about 2.1 ct and diamond side stones",
+    "confidence": 0.86,
+    "observations": [
+      "Oval center stone, saturated medium-dark blue, about 9 x 7 mm",
+      "Fourteen small round side stones set along the shoulders",
+      "White metal; a PT950 stamp is visible inside the band"
+    ],
+    "alternatives": [
+      { "label": "Center stone is a blue spinel", "probability": 0.08 },
+      { "label": "Center stone is a lab-grown sapphire", "probability": 0.06 }
+    ],
+    "open_questions": ["Is the sapphire heated?", "Where is the sapphire from?"],
+    "next_evidence": ["A lab report for the center stone (GIA, SSEF, Gubelin, AGL or GRS) would settle treatment and origin"]
+  },
+  "price_context": {
+    "status": "provided",                   // provided | withheld | processing
+    "currency": "USD",
+    "low": 2400,
+    "high": 6600,
+    "basis": "retail replacement",          // what the figure represents, as the scan states it
+    "explanation": "Most comparable rings with heated sapphires of this size list between $2,400 and $6,600; unheated stones sit at the top of that range and above.",
+    "withheld_reason": null
+  },
+  "comparables": {
+    "status": "found",                      // found | none_found | processing
+    "total": 8, "realized": 3, "asking": 5,
+    "items": [
+      { "source": "sandbox-dealer-1", "title": "Platinum sapphire ring, 2.10 ct, diamond shoulders",
+        "url": null, "photo_url": null, "price": 9448.0, "currency": "USD",
+        "price_type": "asking",             // "realized" = completed sale; "asking" = list price
+        "observed_on": "2024-06-26",
+        "differences": ["Heated sapphire, Sri Lanka", "Fewer side stones"] }
+    ]
+  },
+  "warnings": ["Sandbox: this is an example scan result; it does not reflect the photos and its prices are not market values."],
+  "batch_job_id": null
+}
+```
+
+### When there is no price
+
+`price_context.status` is `withheld` and `withheld_reason` says why:
+
+| Case | What you get |
+| --- | --- |
+| Fewer than 5 comparables | The comparables that were found; reason "Fewer than 5 comparables were found, so no price is given." |
+| The scan withholds the price itself | The scan's own reason, and its comparables |
+| The item could not be identified | `identification.status: unidentified`, `next_evidence` saying what would help, no comparables |
+
+The 5-comparable rule is enforced in the service and again in the response schema. Withheld scans
+are still stored and counted (`scans_total` but not `scans_priced`), which gives the pilot coverage
+metric from `/usage`.
+
+### Scans that take a while
+
+If the scan is still running after a short wait (8 seconds by default), `POST /scans` answers
+`202` with `status: processing`. `GET /scans/{scan_id}` returns the finished result once it is
+ready. The scan is counted once, when it completes.
+
+### Versions
+
+Every completed result carries `model_version`, the scan model that produced it. Pin one with
+`model_version` on the request, or for the whole account
+(`python -m enterprise.cli pin-model --tenant ... --version ...`). The pin is passed to the scan; an
+unknown version returns `422 unknown_model_version` with the available versions.
+
+### Idempotency
+
+Send `Idempotency-Key: <unique string>` (1–255 characters) on `POST /scans` and
+`POST /scans/batch`. Within 24 hours, the same key and body returns the original response with
+`Idempotent-Replayed: true`; nothing is re-run or re-counted. The same key with a different body
+returns `422 idempotency_key_reused`. Errors are not stored, so a corrected request can reuse its
+key. Keys are scoped per account.
+
+### Batch CSV
+
+`POST /scans/batch` takes multipart form data: `file` (UTF-8 CSV, ≤ 5 MB, ≤ 5,000 rows) and
+optional `model_version`. One item per row; extra columns are ignored.
+
+| Column | Required | Notes |
+| --- | --- | --- |
+| `photo_urls` | yes | 1-5 https links separated by `\|` |
+| `row_id` | no | Echoed as `client_reference` |
+| `item_type`, `metal_type`, `metal_purity`, `metal_weight_grams`, `brand`, `signed`, `era`, `condition`, `lab`, `lab_report_number`, `notes` | no | Passed to the scan as details |
+
+The response is `202` with a `job_id`. Poll `GET /scans/batch/{job_id}` until `status` is
+`completed`, then download `results_url`. Results have one row per input row: `row_number, row_id,
+status, scan_id, identified_as, identification_confidence, price_status, price_low, price_high,
+currency, price_basis, withheld_reason, comparables, realized_comparables, asking_comparables,
+model_version, synthetic_data, error`. Rows that fail validation get `status = error` with the
+reason and do not fail the job. Text cells starting with `=`, `+`, `-` or `@` are prefixed with `'`
+to prevent spreadsheet formula injection.
+
+### Errors
+
+Every error has the same shape: `{"error": {"code": "...", "message": "...", "details": ...}}`.
+
+| Status | Codes |
+| --- | --- |
+| 401 | `missing_api_key`, `invalid_api_key` |
+| 403 | `insufficient_scope`, `tenant_inactive` |
+| 404 | `scan_not_found`, `batch_job_not_found` (also for other accounts' ids) |
+| 409 | `batch_not_completed`, `idempotency_conflict` |
+| 413 | `file_too_large` |
+| 422 | `invalid_request`, `unknown_model_version`, `idempotency_key_reused`, `invalid_idempotency_key`, `invalid_csv`, `too_many_rows`, `invalid_date_range` |
+| 503 | `scan_unavailable` |
+
+---
+
+## Intake and Verify
+
+Both follow one pattern:
+
+- The request carries the same `photos`, `details` and `model_version` as `POST /scans`, plus the
+  product's own fields. The scan runs exactly as in the Scan API (same 5-comparable rule, same
+  sandbox behavior) and is metered under the product (`GET /usage` shows `intake` and `verify`
+  separately).
+- The response is the product's block plus the **full scan** it was based on, so the evidence
+  travels with the decision. Every record is stored and retrievable by id.
+- Each account sets its own rules (`GET`/`PUT` on the settings endpoint). The settings in force are
+  copied into every result (`rules_applied`, `settings_applied`), so a
+  decision can be explained later even after the rules change.
+- If the scan is still running, the POST answers `202` with `status: processing`; the GET finishes
+  it. POSTs accept `Idempotency-Key`.
+- Around every record: a **work queue**, the reviewer's **final call**, the **pilot metrics**, a
+  **CSV batch** and **webhooks** (below), and the **console** for people who work the queue.
+
+| Method and path | Scope | Purpose |
+| --- | --- | --- |
+| `POST /intake/items`, `GET /intake/items/{id}` | `intake` | Route a consigned item |
+| `GET /intake/items` | `intake` | The queue: filter by `decision`, `reviewed`, `final_decision`, `reference`, dates; `format=csv` |
+| `POST /intake/items/{id}/review` | `intake` | Record the specialist's final decision |
+| `GET /intake/stats` | `intake` | Pilot metrics |
+| `GET`/`PUT /intake/rules` | `intake` | The account's routing rules |
+| `POST /intake/items/batch`, `GET .../batch/{job_id}`, `GET .../batch/{job_id}/results` | `intake` | CSV batch |
+| `POST /verify/checks`, `GET /verify/checks/{id}` | `verify` | Risk-check a listing, claim or appraisal |
+| `GET /verify/checks` | `verify` | The review queue: open flags by risk by default; filter by `action`, `reviewed`, `outcome`, `min_score`, `seller_id`, dates; `format=csv` |
+| `POST /verify/checks/{id}/review` | `verify` | Record the verdict: `confirmed` or `cleared` |
+| `GET /verify/stats` | `verify` | Pilot metrics |
+| `GET`/`PUT /verify/settings` | `verify` | Risk thresholds |
+| `POST /verify/checks/batch`, `GET .../batch/{job_id}`, `GET .../batch/{job_id}/results` | `verify` | CSV batch |
+
+### Intake
+
+Extra fields: `consignor_description` (also passed to the scan as a note) and `reference`. The
+decision is one of `list`, `review`, `lab`, `decline`, with coded reasons, applied in this order:
+
+1. Not identified, or no price (for example under 5 comparables): `review`.
+2. High end below `decline_below_value` (default 50): `decline`.
+3. Low end at or above `lab_min_value` (default 5,000): `lab`.
+4. The scan suggests a lab report and the range is wide (high ≥ `lab_spread_ratio` × low, default
+   2): `lab`, because the open question moves the value.
+5. Confidence ≥ `min_confidence_to_list` (0.85) and high end ≤ `list_max_value` (2,000): `list`.
+6. Otherwise `review`, with the reasons it missed `list`.
+
+`prefill` suggests listing fields (title, price range, open questions) from the scan, labelled as
+suggestions; treatment, origin and maker attribution are never filled in as fact.
+
+### Verify
+
+Extra field: `subject` (`type`: listing, claim or appraisal; `external_id`; optional `seller_id`,
+`stated_value`, `currency`). The result has a 0-100 `risk_score`, a suggested `action` and every
+check with whether it ran, whether it fired, its weight and its evidence:
+
+| Check | Fires when | Weight |
+| --- | --- | --- |
+| `price_too_low` | Stated value below 0.5 × the scan's low end | 40 |
+| `price_too_high` | Stated value above 1.5 × the scan's high end | 40 |
+| `unidentified` | The scan could not identify the item | 30 |
+| `identification_uncertain` | Identification confidence below 60% | 20 |
+| `possible_other_identity` | An alternative identification at 20% or more | 15 |
+| `duplicate_imagery` | A photo was already used in this account under another reference | 40 |
+| `seller_pattern` | The seller has 2+ flagged checks in the last 90 days | 25 |
+
+Score = sum of fired weights, capped at 100. Action: `hold` at 70+, `manual_review` at 40+,
+`request_lab_report` when an identification check fired, else `allow` (ratios, thresholds and the
+seller window are account settings). Price checks run only against a scan price in the same
+currency. Photos are matched by exact fingerprint (uploaded bytes or URL) within the account only,
+so a re-encoded or cropped copy is not caught. Every result says: a risk signal for review, not an
+authentication or certification.
+
+---
+
+### Final calls and pilot metrics
+
+`POST .../{id}/review` records what a person decided after looking: for Intake the decision the
+specialist actually made (`list`, `review`, `lab`, `decline`), for Verify whether the flag was real
+(`confirmed` or `cleared`). Each call carries an optional `note` and `reviewer`; a new call
+replaces the current one and the earlier calls are kept in `review.previous`. The record then shows
+`review.agrees`: whether the person agreed with the product.
+
+These calls are what the pilot success metrics are computed from (`GET .../stats?start_date&end_date`,
+default the last 30 days):
+
+- **Intake:** decisions by type, how many were reviewed, the agreement rate, and the
+  **List-route correction rate**: of the List-routed items a specialist reviewed, the share they
+  changed (the spec's target is under 2%).
+- **Verify:** checks by action, flags, flags reviewed, **flag precision** (confirmed ÷ reviewed
+  flags), the **precision of the top 5%** of checks by risk score, and the stated value of
+  confirmed problems by currency.
+
+### Batch
+
+`POST /intake/items/batch` and `POST /verify/checks/batch` take the same CSV as `POST /scans/batch`
+(`photo_urls` required, optional detail columns) plus each product's fields: Intake `reference`
+(default `row_id`) and `consignor_description`; Verify `external_id` (default `row_id`),
+`subject_type` (default `listing`), `seller_id`, `stated_value`, `currency`. Each row becomes a
+normal record, exactly as if sent one at a time, so it appears in the queue and the metrics. The
+results CSV has one row per input row with the same columns as the queue export.
+
+### Webhooks
+
+One endpoint per account, for any key: `PUT /webhooks {url, events}` (the signing secret is returned
+once, and again only with `rotate_secret: true`), `GET`/`DELETE /webhooks`, `POST /webhooks/test`,
+`GET /webhooks/deliveries`, `POST /webhooks/deliveries/{id}/retry`.
+
+| Event | Sent when |
+| --- | --- |
+| `intake.item.completed` | An Intake decision is ready |
+| `verify.check.completed` | A Verify check is ready |
+| `verify.check.flagged` | A Verify check's action is anything but `allow` |
+| `batch.completed` | A batch job finished (any product) |
+
+Each delivery is a JSON POST: `{id, type, created_at, data: {object, id, path, summary}}`, where
+`summary` is the record's queue row (never photos) and `path` is where to fetch the full record.
+Headers: `GemstoneAI-Event-Id`, `GemstoneAI-Event-Type` and
+`GemstoneAI-Signature: t=<unix>,v1=<hex>`, an HMAC-SHA256 of `<t>.<raw body>` with the secret.
+Only https URLs on public hosts are accepted, checked again at each delivery. Events are written
+with the record (outbox) and sent after the response; failures are retried on later runs up to 5
+attempts, then marked `failed`. In production run `python -m enterprise.cli webhooks-dispatch` every
+minute (or on a worker) so retries don't wait for the next event.
+
+### Console
+
+`/enterprise/v1/console/` is a small web app for the people who work the queues, served by the API
+and signed in with an API key (kept only in the browser tab):
+
+- **Intake station:** take or link photos, add the consignor's words, scan and route; record the
+  final decision; recent items with filters and CSV export; the pilot metrics at the top.
+- **Verify queue:** open flags ranked by risk, each check with its evidence, confirmed/cleared
+  verdicts, a form to check an item; the pilot metrics at the top.
+- **Settings:** routing rules, risk thresholds, the webhook endpoint, a test event and recent
+  deliveries.
+
+It uses only the public API and is served with a strict Content Security Policy. A sandbox key
+gives a working demo with example results.
+
+---
+
+## Data: realized vs asking
+
+Auction and resale customers judge everything by realized prices, so every comparable says what kind
+of price it is (`price_type`: `realized` or `asking`). Comparables from the scan without that tag are
+dropped, never shown as evidence.
+
+In this repo, the scraped listings gained `gemstone_items.price_source_type`: dealer sites default to
+`asking`, auction houses are `realized`. `storage/migrations/001_add_price_source_type.sql` backfills
+existing dealer rows to `asking` and leaves existing auction rows NULL (unverified). The backend's
+own listings, which feed the scan's comparables, need the same tag. Today they come from dealers, so
+expect most comparables to be asking prices until realized-price sources are added.
+
+---
+
+## Operations
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ENTERPRISE_DATABASE_URL` | `sqlite:///./data/enterprise.db` | Postgres in production (`postgresql://...` uses psycopg2) |
+| `ENTERPRISE_SCAN_BACKEND` | `none` | `none` (live scans → 503), `remote` (the backend's scan), `sandbox` (example results, dev only) |
+| `ENTERPRISE_SCAN_URL`, `ENTERPRISE_SCAN_API_KEY` | | The backend scan endpoint and credential |
+| `ENTERPRISE_SCAN_TIMEOUT_SECONDS` | `20.0` | Per-call timeout; also how long a batch row waits for a running scan |
+| `ENTERPRISE_SCAN_WAIT_SECONDS`, `ENTERPRISE_SCAN_POLL_INTERVAL_SECONDS` | `8.0`, `1.0` | How long `POST /scans` waits before answering `202 processing` |
+| `ENTERPRISE_IDEMPOTENCY_TTL_HOURS` | `24` | |
+| `ENTERPRISE_BATCH_MAX_ROWS`, `ENTERPRISE_BATCH_MAX_BYTES` | `5000`, `5000000` | |
+| `ENTERPRISE_WEBHOOK_ALLOW_PRIVATE_HOSTS` | `false` | Allow http and private hosts for webhooks (local development only) |
+| `ENTERPRISE_WEBHOOK_TIMEOUT_SECONDS`, `ENTERPRISE_WEBHOOK_MAX_ATTEMPTS` | `10.0`, `5` | |
+
+**Migrations:** `ENTERPRISE_DATABASE_URL=... alembic -c enterprise/alembic.ini upgrade head`.
+Verified against SQLite and Postgres 16. Do not run against production without review.
+
+**Operator CLI** (`python -m enterprise.cli --help`): `create-tenant`, `create-key`, `revoke-key`,
+`pin-model`, `webhooks-dispatch`, `export-openapi`, `init-db` (SQLite only).
+
+## Known limitations (v1)
+
+- No real results until the backend adapter is connected (`ENTERPRISE_SCAN_BACKEND=remote`) and its
+  field mapping is checked against a real scan.
+- Photos are required, as in today's scan. Details-only requests (for example from an auction
+  catalogue) would need the backend to support them.
+- Photos are not retained (only sha256, size, type and URL); keeping images for audit needs object
+  storage and retention terms.
+- Batch jobs run in-process after the response. `process_batch_job` is a plain function, ready to
+  move onto the existing Celery workers; a job interrupted by a restart stays `running`.
+- The console signs in with an API key; SSO, user accounts and roles (associate vs admin) are not
+  built. No billing.
+- Queues use offset pagination and CSV exports stop at 10,000 rows.
+- Webhook signing secrets are stored in clear (needed to sign); encrypt them at rest before
+  production.
+- Verify cannot yet check a lab report number against the stone, match edited or cropped copies of
+  a photo, or compare stated materials field by field: those need data from the backend.

@@ -8,6 +8,8 @@ Do NOT add domains without proper compliance review.
 from dataclasses import dataclass, field
 from typing import Optional
 
+PRICE_SOURCE_TYPES = ("realized", "asking")
+
 
 @dataclass(frozen=True)
 class SiteConfig:
@@ -29,6 +31,19 @@ class SiteConfig:
     max_concurrent: int = 2
     requires_api: bool = False
     scraper_class: str = "generic"
+    # How a price captured from this site must be tagged when used as a comp:
+    #   "asking"   - a dealer/marketplace list price (not a transaction)
+    #   "realized" - a completed sale (auction hammer/realized price, final resale price)
+    # Dealer sites default to "asking". Auction houses are "realized" because the only
+    # price an auction adapter may store is a sold-lot result: pre-sale estimates are
+    # never stored as values (see ignore_fields / estimates_as_value).
+    price_source_type: str = "asking"
+
+    def __post_init__(self) -> None:
+        if self.price_source_type not in PRICE_SOURCE_TYPES:
+            raise ValueError(
+                f"{self.domain}: price_source_type must be one of {PRICE_SOURCE_TYPES}"
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -91,6 +106,7 @@ ALLOWED_SITES: dict[str, SiteConfig] = {
         crawl_delay=3.0,
         max_concurrent=1,
         scraper_class="sothebys",
+        price_source_type="realized",
     ),
     "christies.com": SiteConfig(
         domain="christies.com",
@@ -101,6 +117,7 @@ ALLOWED_SITES: dict[str, SiteConfig] = {
         crawl_delay=3.0,
         max_concurrent=1,
         scraper_class="christies",
+        price_source_type="realized",
     ),
     "bonhams.com": SiteConfig(
         domain="bonhams.com",
@@ -111,6 +128,7 @@ ALLOWED_SITES: dict[str, SiteConfig] = {
         crawl_delay=3.0,
         max_concurrent=1,
         scraper_class="bonhams",
+        price_source_type="realized",
     ),
 }
 

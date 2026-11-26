@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Request a pilot | GemstoneAI Enterprise</title>
+<meta name="description" content="Request a 60-day GemstoneAI Enterprise pilot for the Scan API, Intake or Verify.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html">Scan API</a></li>
+      <li><a href="intake.html">Intake</a></li>
+      <li><a href="verify.html">Verify</a></li>
+      <li><a href="developers.html">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
+  </div>
+</header>
+<main id="main">
+<section class="hero hero-simple">
+  <div class="wrap">
+    <div class="hero-copy">
+      <div class="hero-tag"><span class="label">Request a pilot</span></div>
+      <h1>Prove it on your own items.</h1>
+      <p class="lede">Pilots run for 60 days with a fixed scope: one product, one workflow and 200 or more of your own items, with the success metric agreed in writing first.</p>
+    </div>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap form-grid">
+    <form class="form" id="pilot-form" data-contact="enterprise@gemstoneaiapp.com" novalidate>
+      <div class="field"><label for="name">Name</label><input id="name" name="name" autocomplete="name" required></div>
+      <div class="field"><label for="email">Work email</label><input id="email" name="email" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="company">Company</label><input id="company" name="company" autocomplete="organization" required></div>
+      <div class="field"><label for="role">Role</label><input id="role" name="role" autocomplete="organization-title"></div>
+      <div class="field"><label for="segment">Your business</label>
+        <select id="segment" name="segment" required>
+          <option value="">Choose one</option>
+          <option>Insurer or appraisal platform</option>
+          <option>Luxury resale or consignment</option>
+          <option>Marketplace</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field"><label for="volume">Items per month</label>
+        <select id="volume" name="volume">
+          <option value="">Choose one</option>
+          <option>Under 100</option>
+          <option>100 to 1,000</option>
+          <option>1,000 to 10,000</option>
+          <option>Over 10,000</option>
+        </select>
+      </div>
+      <fieldset class="field field-full">
+        <legend>Products you&rsquo;re interested in</legend>
+        <div class="checks-row">
+          <label class="check"><input type="checkbox" name="products" value="Scan API"> Scan API</label>
+          <label class="check"><input type="checkbox" name="products" value="Intake"> Intake</label>
+          <label class="check"><input type="checkbox" name="products" value="Verify"> Verify</label>
+        </div>
+      </fieldset>
+      <div class="field field-full"><label for="message">What would a successful pilot show you?</label><textarea id="message" name="message" placeholder="For example: revalue 2,000 scheduled jewelry items and compare with our appraisers&rsquo; values."></textarea></div>
+      <div class="form-foot">
+        <button class="btn btn-primary" type="submit">Send request</button>
+        <span class="form-note">Opens your email app with the request filled in.</span>
+      </div>
+      <p class="form-status" id="form-status" role="status">Thanks. Your email app should have opened with your request. Send it and we&rsquo;ll reply within two business days.</p>
+    </form>
+    <aside class="card">
+      <h3>How a pilot runs</h3>
+      <ol class="side-steps">
+        <li><span><b>Scope</b>One product and one workflow, such as revaluing a policy portfolio or routing a month of consignments.</span></li>
+        <li><span><b>Agree the metric</b>Measured on a holdout of 200+ of your items, before anything runs.</span></li>
+        <li><span><b>Run for 60 days</b>Your team uses the sandbox, then live keys, inside its existing process.</span></li>
+        <li><span><b>Decide</b>If you convert, the pilot fee is credited to your first year.</span></li>
+      </ol>
+    </aside>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
+    </div>
+    <div class="footer-base">
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+    </div>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

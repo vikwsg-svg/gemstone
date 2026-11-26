@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Developers | GemstoneAI Enterprise</title>
+<meta name="description" content="The GemstoneAI Enterprise API: endpoints, conventions, batch, webhooks and sandbox keys.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html">Scan API</a></li>
+      <li><a href="intake.html">Intake</a></li>
+      <li><a href="verify.html">Verify</a></li>
+      <li><a href="developers.html" aria-current="page">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
+  </div>
+</header>
+<main id="main">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <div class="hero-tag"><span class="label">Developers &middot; API v1</span></div>
+      <h1>One API for all three products.</h1>
+      <p class="lede">Versioned at <code>/enterprise/v1</code> and described by an OpenAPI spec. Sandbox keys return example results, so you can build before the pilot starts.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="openapi.json">Download the OpenAPI spec</a>
+        <a class="btn btn-quiet" href="pilot.html">Get sandbox keys</a>
+      </div>
+      <p class="hero-note">Base URL <code>https://api.gemstoneaiapp.com/enterprise/v1</code></p>
+    </div>
+    <div>
+      <div class="code-label"><span>POST /scans</span><span>request</span></div>
+<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/scans \
+  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
+  -H <span class="s">"Idempotency-Key: lot-1142"</span> \
+  -d <span class="s">'{"photos": [{"url": "https://&hellip;/lot-1142.jpg"}],
+       "details": {"item_type": "bracelet",
+         "metal": {"type": "gold", "purity": "18k"}},
+       "client_reference": "LOT-1142"}'</span></pre>
+      <div class="code-label" style="margin-top:16px"><span>Response (abridged)</span><span>201</span></div>
+<pre class="code code-wrap">{
+  <span class="k">"scan_id"</span>: <span class="s">"scn_01M87F&hellip;"</span>,
+  <span class="k">"status"</span>: <span class="s">"completed"</span>,
+  <span class="k">"model_version"</span>: <span class="s">"sandbox-2026.11"</span>,
+  <span class="k">"identification"</span>: { <span class="k">"summary"</span>: <span class="s">"&hellip;"</span>, <span class="k">"confidence"</span>: <span class="n">0.9</span>, &hellip; },
+  <span class="k">"price_context"</span>: { <span class="k">"status"</span>: <span class="s">"provided"</span>,
+    <span class="k">"low"</span>: <span class="n">1500</span>, <span class="k">"high"</span>: <span class="n">2900</span>, <span class="k">"basis"</span>: <span class="s">"resale"</span> },
+  <span class="k">"comparables"</span>: { <span class="k">"total"</span>: <span class="n">9</span>, <span class="k">"items"</span>: [
+    { <span class="k">"price"</span>: <span class="n">2150</span>, <span class="k">"price_type"</span>: <span class="s">"realized"</span>, &hellip; } ] }
+}</pre>
+    </div>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Endpoints</h2>
+      <p>Intake and Verify take the same photos as a scan and return their decision with the full scan behind it.</p>
+    </div>
+    <div class="table-wrap"><table class="table"><tbody>
+<tr><th colspan="2" class="group">Scan API &middot; scope <code>scan</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans</code></td><td>Scan one piece or loose stone: identification, price and comparables</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/{scan_id}</code></td><td>A scan as it was returned, or the result of one still running</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans/batch</code></td><td>Scan a CSV of items; status and results CSV under <code>/scans/batch/{job_id}</code></td></tr>
+<tr><th colspan="2" class="group">Intake &middot; scope <code>intake</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items</code></td><td>Scan a consigned item and route it, with reasons</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items</code></td><td>The queue: filter by route, review state, reference or date; CSV export</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/items/{id}</code></td><td>One intake decision</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items/{id}/review</code></td><td>Record the specialist&rsquo;s final decision</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/intake/stats</code></td><td>Pilot metrics, including the List-route correction rate</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/intake/rules</code></td><td>Your routing thresholds</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/intake/items/batch</code></td><td>Route a CSV of items</td></tr>
+<tr><th colspan="2" class="group">Verify &middot; scope <code>verify</code></th></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks</code></td><td>Scan an item and risk-check a listing, claim or appraisal</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks</code></td><td>The review queue: open flags by risk; filters and CSV export</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/checks/{id}</code></td><td>One risk check</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks/{id}/review</code></td><td>Record the verdict: confirmed or cleared</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/verify/stats</code></td><td>Pilot metrics, including the precision of the top 5% of flags</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><code>/verify/settings</code></td><td>Your risk thresholds</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/verify/checks/batch</code></td><td>Screen a CSV of listings or claims</td></tr>
+<tr><th colspan="2" class="group">Account and webhooks &middot; any key</th></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/account</code></td><td>The account and key: environment and product scopes</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Scans per day, by product</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><span class="method method-put">PUT</span><span class="method method-delete">DELETE</span><code>/webhooks</code></td><td>Your webhook endpoint and events; the signing secret is shown once</td></tr>
+<tr><td class="nowrap"><span class="method method-get">GET</span><code>/webhooks/deliveries</code></td><td>Recent deliveries; send a test with <code>POST /webhooks/test</code></td></tr>
+</tbody></table></div>
+  </div>
+</section>
+<section class="section" id="sandbox">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Conventions</h2>
+    </div>
+    <div class="facts three"><div class="fact"><h3>Keys and scopes</h3><p>Send <code>Authorization: Bearer gsk_&hellip;</code>. Each key is scoped to the products it may use.</p></div><div class="fact"><h3>Sandbox</h3><p><code>gsk_test_</code> keys return example results for every product, marked <code>synthetic_data: true</code>.</p></div><div class="fact"><h3>Safe retries</h3><p>Send <code>Idempotency-Key</code> on any POST. A retry returns the original result and is billed once.</p></div><div class="fact"><h3>Slow scans</h3><p>If a scan takes longer than a few seconds, you get <code>202 processing</code>; fetch the record to finish it.</p></div><div class="fact"><h3>Versions</h3><p>Every result names its model version. Pin one per request or per account.</p></div><div class="fact"><h3>Errors</h3><p>Always <code>{&quot;error&quot;: {&quot;code&quot;, &quot;message&quot;}}</code>, with field details on validation errors.</p></div></div>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Batch, webhooks and the console</h2>
+    </div>
+    <div class="grid3"><div class="card"><h3>Batch</h3><p>Every product takes a CSV with one item per row. Poll the job, then download one result row per item.</p></div><div class="card"><h3>Webhooks</h3><p>Intake decisions, Verify checks and flags, and finished batches, signed with HMAC-SHA256. Never photos.</p></div><div class="card"><h3>Console</h3><p>The intake station and the Verify review queue at <code>/enterprise/v1/console/</code>, signed in with an API key.</p></div></div>
+  </div>
+</section>
+<section class="cta">
+  <div class="wrap cta-inner">
+    <div>
+      <h2>Get sandbox keys</h2>
+      <p>Tell us which product you&rsquo;re building for and we&rsquo;ll send keys that return example results.</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+      <a class="btn btn-quiet" href="openapi.json">OpenAPI spec</a>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
+    </div>
+    <div class="footer-base">
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+    </div>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>
