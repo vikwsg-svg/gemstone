@@ -2,195 +2,125 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GemstoneAI Enterprise</title>
-<meta name="description" content="The pricing and verification layer for jewelry: scan results with prices and comparables, consignment intake routing, and listing and claim risk for fine jewelry, diamonds and gemstones.">
+<meta name="description" content="Price and verify jewelry at volume: the Scan API, Intake and Verify, built on the GemstoneAI scan.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="nav">
-  <div class="container nav-inner">
-    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
-    <nav aria-label="Main">
-      <ul class="nav-links" id="nav-links">
-        <li><a href="scan.html">Scan API</a></li>
-        <li><a href="intake.html">Intake</a></li>
-        <li><a href="verify.html">Verify</a></li>
-        <li><a href="developers.html">Developers</a></li>
-        <li><a class="btn btn-primary btn-small" href="pilot.html">Request a pilot</a></li>
-      </ul>
-    </nav>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html">Scan API</a></li>
+      <li><a href="intake.html">Intake</a></li>
+      <li><a href="verify.html">Verify</a></li>
+      <li><a href="developers.html">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
   </div>
 </header>
 <main id="main">
 <section class="hero">
-  <div class="container hero-grid">
-    <div>
-      <span class="eyebrow">GemstoneAI Enterprise</span>
-      <h1>The pricing and verification layer for jewelry.</h1>
-      <p class="lede">Defensible values with the evidence attached for fine jewelry, signed pieces, diamonds and gemstones, for teams that price, accept, list or insure them at volume. Delivered as infrastructure: an API, batch files and your own workflows, not another app.</p>
-      <div class="hero-actions">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <h1>Price and verify jewelry at volume.</h1>
+      <p class="lede">Three APIs on the GemstoneAI scan, for insurers, resale platforms and marketplaces. Send photos of a piece and get what it is, what it&rsquo;s worth and the comparables behind it.</p>
+      <div class="actions">
         <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
-        <a class="btn btn-secondary" href="scan.html">See how the Scan API works</a>
+        <a class="btn btn-quiet" href="scan.html">See the Scan API</a>
       </div>
-      <p class="hero-note">For insurers and appraisal platforms, luxury resale platforms and marketplaces.</p>
+      <p class="hero-note">Fine jewelry, signed and period pieces, diamonds and gemstones.</p>
     </div>
-    <figure class="vcard" aria-label="Example Scan API result for a ring">
-  <div class="vcard-head">
-    <div class="vcard-stone">Scan &middot; 2 photos + metal weight<span>Policy item POLICY-88231/ITEM-2</span></div>
-    <div class="vcard-id">scn_01M87FMN3YG6&hellip;<br>sandbox-2026.11</div>
+    <figure class="report" aria-label="Example Scan API result">
+  <div class="report-head"><b>Scan result</b><span class="mono">scn_01M87FMN3YG6&hellip; &middot; sandbox-2026.11</span></div>
+  <div class="report-body">
+    <div class="rrow"><span class="label">Identified</span><div>Platinum ring with an oval blue sapphire of about 2.1&nbsp;ct and diamond side stones<div class="sub">86% confidence</div><div class="chips"><span class="alt">blue spinel center 8%</span><span class="alt">lab-grown sapphire 6%</span></div></div></div>
+    <div class="rrow"><span class="label">Price</span><div><div class="big">$2,400 &ndash; $6,600</div><div class="sub">Retail replacement. Unheated stones sit at the top and above.</div></div></div>
+    <div class="rrow"><span class="label">Comparables</span><div>
+      <table class="comps"><tbody>
+        <tr><td><span class="chip c-sold">Sold</span></td><td>Sapphire and diamond ring, platinum<span class="sim">Jul 2025 &middot; larger center stone</span></td><td>$5,200</td></tr>
+        <tr><td><span class="chip c-sold">Sold</span></td><td>Platinum sapphire ring, 2.0&nbsp;ct<span class="sim">Jan 2026 &middot; plain band</span></td><td>$3,900</td></tr>
+        <tr><td><span class="chip c-asking">Asking</span></td><td>Platinum sapphire ring, 2.10&nbsp;ct<span class="sim">Jun 2024 &middot; fewer side stones</span></td><td>$9,448</td></tr>
+      </tbody></table>
+      <div class="sub">8 found: 3 sold, 5 asking</div>
+    </div></div>
   </div>
-  <div class="vcard-body">
-    <div class="ident">
-      <div class="vcard-label">Identified &middot; 86% confidence</div>
-      <p class="ident-summary">Platinum ring with an oval blue sapphire of about 2.1&nbsp;ct and diamond side stones</p>
-      <div class="ident-alts"><span>Could also be</span><span class="alt-chip">blue spinel center 8%</span><span class="alt-chip">lab-grown sapphire 6%</span></div>
-      <div class="ident-open"><span>Still open</span>Heated? Origin? A lab report would settle both.</div>
-    </div>
-    <div class="band">
-      <div class="vcard-label">Price &middot; retail replacement</div>
-      <div class="price-range">$2,400 <span>to</span> $6,600</div>
-      <div class="band-sub">Heated sapphires sit in this range; unheated ones at the top and above.</div>
-    </div>
-    <div style="margin-top:4px">
-      <div class="vcard-label">Comparables &middot; 8 found: 3 sales, 5 asking prices</div>
-      <table class="comps-table">
-        <tr><td><span class="tag tag-asking">Asking</span></td><td>Platinum sapphire ring, 2.10&nbsp;ct<br><span class="sim">Jun 2024 &middot; fewer side stones</span></td><td>$9,448</td></tr>
-        <tr><td><span class="tag tag-realized">Sold</span></td><td>Sapphire and diamond ring, platinum<br><span class="sim">Jul 2025 &middot; larger center stone</span></td><td>$5,200</td></tr>
-        <tr><td><span class="tag tag-realized">Sold</span></td><td>Platinum sapphire ring, 2.0&nbsp;ct<br><span class="sim">Jan 2026 &middot; plain band</span></td><td>$3,900</td></tr>
-      </table>
-    </div>
-  </div>
-  <figcaption class="vcard-foot"><span>Sandbox example: not a real scan and not market values.</span><span>One API call returns all of this.</span></figcaption>
+  <figcaption class="report-foot"><span>Sandbox example, not a real scan</span><span>One API call</span></figcaption>
 </figure>
   </div>
 </section>
-
-<section class="section-alt">
-  <div class="container">
+<section class="section">
+  <div class="wrap">
     <div class="section-head">
-      <span class="eyebrow">Three products, one engine</span>
-      <h2>Buy the one your team needs. Add the rest when it pays.</h2>
-      <p>Each product is a separate line on your contract with its own success metric. All three run on the same scan, so a number means the same thing everywhere.</p>
+      <h2>Three products on one scan</h2>
+      <p>Buy one and add the others when they pay. A price means the same thing in all three.</p>
     </div>
-    <div class="products">
-      <a class="product" href="scan.html"><span class="num">01</span><h3>Scan API</h3><span class="pill pill-live">Pilot available</span><p>Your GemstoneAI scan result, built for business systems: what a piece is, what it&rsquo;s worth and the comparables behind it.</p><span class="buyer"><strong>For</strong>Insurers, appraisal platforms, marketplaces</span><span class="more">Explore the Scan API &rarr;</span></a>
-      <a class="product" href="intake.html"><span class="num">02</span><h3>Intake</h3><span class="pill pill-live">Pilot available</span><p>Routes consigned jewelry to list now, specialist review, lab or decline, by your rules.</p><span class="buyer"><strong>For</strong>Luxury resale and consignment</span><span class="more">Explore Intake &rarr;</span></a>
-      <a class="product" href="verify.html"><span class="num">03</span><h3>Verify</h3><span class="pill pill-live">Pilot available</span><p>Risk-scores listings and claims whose price, identification or photos don&rsquo;t add up.</p><span class="buyer"><strong>For</strong>Marketplaces and insurers</span><span class="more">Explore Verify &rarr;</span></a>
-    </div>
-    <div class="engine-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Every product builds on the Scan API. Intake routes each scan by your rules, and Verify checks a listing or claim against it.</span></div>
-  </div>
-</section>
-
-<section>
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">Built to be defended</span>
-      <h2>Numbers your specialists, underwriters and auditors can stand behind.</h2>
-    </div>
-    <div class="principles">
-      <div class="principle"><span class="k">01 / no guessing</span><h3>No guessing</h3><p>If an item can&rsquo;t be identified well enough, or fewer than five comparables qualify, you get what we found and the next evidence to get, not a number.</p></div>
-      <div class="principle"><span class="k">02 / evidence</span><h3>Realized or asking, always labeled</h3><p>Every comparable shows whether it is a completed sale or an asking price, with its date, attributes and similarity score.</p></div>
-      <div class="principle"><span class="k">03 / reproducible</span><h3>Pinned model versions</h3><p>Every response is stamped with a model version. Pin one for a sale or a policy term and the method won&rsquo;t move under you.</p></div>
-      <div class="principle"><span class="k">04 / auditable</span><h3>Every scan on file</h3><p>Each result has a scan ID that retrieves the exact inputs, identification, comparables, model version and output later.</p></div>
+    <div class="grid3">
+      <a class="card product" href="scan.html"><div class="product-top"><h3>Scan API</h3></div><p>The scan result for your systems: identification, price range and the comparables behind it.</p><div class="out"><span class="mono">$2,400 &ndash; $6,600</span><span class="muted small">8 comparables</span></div><span class="for">For insurers, appraisal platforms and marketplaces</span><span class="more">Scan API &rarr;</span></a>
+      <a class="card product" href="intake.html"><div class="product-top"><h3>Intake</h3></div><p>Routes each consignment to list, review, lab or decline, by thresholds you set.</p><div class="out"><span class="chip c-list">List</span><span class="chip c-review">Review</span><span class="chip c-lab">Lab</span><span class="chip c-decline">Decline</span></div><span class="for">For luxury resale and consignment</span><span class="more">Intake &rarr;</span></a>
+      <a class="card product" href="verify.html"><div class="product-top"><h3>Verify</h3></div><p>Scores listings and claims whose price, identification or photos don&rsquo;t add up.</p><div class="out"><span class="mono">Risk 55</span><span class="chip c-review">Manual review</span></div><span class="for">For marketplaces and insurer claims</span><span class="more">Verify &rarr;</span></a>
     </div>
   </div>
 </section>
-
-<section class="section-alt">
-  <div class="container">
+<section class="section">
+  <div class="wrap">
     <div class="section-head">
-      <span class="eyebrow">Who it&rsquo;s for</span>
-      <h2>Three kinds of teams, three different problems.</h2>
+      <h2>Photos in, a decision you can defend out</h2>
     </div>
-    <div class="segments">
-      <div class="segment"><h3>Luxury resale</h3><p>Thousands of jewelry consignments a month, limited specialist hours, and pricing errors that leak margin.</p><p class="lead">Start with <a href="intake.html">Intake</a>, then <a href="scan.html">the Scan API</a></p></div>
-      <div class="segment"><h3>Marketplaces</h3><p>Misdescribed jewelry, lab-grown sold as natural, price anomalies, chargebacks and buyer trust.</p><p class="lead">Start with <a href="verify.html">Verify</a>, then <a href="scan.html">the Scan API</a></p></div>
-      <div class="segment"><h3>Insurers and appraisal platforms</h3><p>Appraisal cost and delay at binding, and inflated claims at settlement.</p><p class="lead">Start with <a href="scan.html">the Scan API</a>, then <a href="verify.html">Verify</a></p></div>
-    </div>
+    <ol class="steps">
+      <li><h3>Send photos</h3><p>One to five photos of one item, plus anything you know: metal, weight, maker, a lab report number.</p></li>
+      <li><h3>We scan it</h3><p>The GemstoneAI scan identifies the piece and prices it from comparable sales and listings.</p></li>
+      <li><h3>Your rules run</h3><p>Intake routes it and Verify scores it, using thresholds your team sets.</p></li>
+      <li><h3>You keep the evidence</h3><p>The decision, the comparables and the model version, stored and retrievable by ID.</p></li>
+    </ol>
   </div>
 </section>
-
-<section id="data-rights">
-  <div class="container split">
+<section class="section" id="data-rights">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Built to be checked</h2>
+    </div>
+    <div class="facts"><div class="fact"><h3>No guessing</h3><p>No price with fewer than five comparables. You get the reason and the evidence that would settle it.</p></div><div class="fact"><h3>Sold or asking</h3><p>Every comparable is labelled as a realized sale or an asking price, with its source and date.</p></div><div class="fact"><h3>A record of every call</h3><p>Each result is stored with its inputs and model version. Pin a version to keep results consistent.</p></div><div class="fact"><h3>Your data stays yours</h3><p>Isolated per account. Never used to train shared models or shown to anyone else without a signed agreement.</p></div></div>
+  </div>
+</section>
+<section class="cta">
+  <div class="wrap cta-inner">
     <div>
-      <span class="eyebrow">Data rights</span>
-      <h2 style="margin-top:14px">Your data stays yours.</h2>
-      <p class="lede" style="margin-top:16px">Enterprise is separate from our consumer and dealer products at the API edge. Your valuations are isolated to your account and are never shown to other customers.</p>
+      <h2>Start with a 60-day pilot</h2>
+      <p>Prove it on your own items before you commit.</p>
+      <ul class="cta-facts"><li>One product, one workflow</li><li>200+ of your own items</li><li>Success metric agreed up front</li></ul>
     </div>
-    <div class="panel">
-      <ul class="list"><li><strong>Tenant isolation.</strong> Every stored valuation, batch and usage record belongs to one account and is only retrievable with that account&rsquo;s keys.</li><li><strong>Scoped API keys.</strong> Keys are issued per product, so a Scan API key cannot call anything else.</li><li><strong>No training on your data by default.</strong> Your data is not used to train shared models without a signed data-contribution agreement, which earns a price discount.</li><li><strong>Audit trail.</strong> Every scan is stored with its inputs, identification, comparables and model version and can be retrieved by ID.</li></ul>
-    </div>
-  </div>
-</section>
-
-<section class="section-alt">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">How a pilot works</span>
-      <h2>Prove it on your own items before you commit.</h2>
-    </div>
-    <div class="steps">
-      <div class="step"><h3>Scope</h3><p>Pick one product and one workflow, such as revaluing a policy portfolio or routing a month of consignments.</p></div>
-      <div class="step"><h3>Agree the metric</h3><p>We agree in writing how success is measured, on a holdout of 200+ of your own items, before anything runs.</p></div>
-      <div class="step"><h3>Run for 60 days</h3><p>Your team uses the sandbox, then the live API or CSV batch, inside its existing process.</p></div>
-      <div class="step"><h3>Decide</h3><p>If you convert, the pilot fee is credited to your first year.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="cta-band">
-  <div class="container cta-inner">
-    <div>
-      <h2>Start with a 60-day pilot.</h2>
-      <p>One product, one workflow, a holdout of 200+ of your own items, and success metrics agreed in writing before it starts.</p>
-    </div>
-    <div class="cta-actions">
-      <a class="btn btn-light" href="pilot.html">Request a pilot</a>
-      <a class="btn btn-ghost-light" href="developers.html">Read the API docs</a>
+    <div class="actions">
+      <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+      <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
     </div>
   </div>
 </section>
 </main>
 <footer class="footer">
-  <div class="container">
-    <div class="footer-grid">
-      <div>
-        <a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
-        <p style="margin-top:14px;max-width:320px">The pricing and verification layer for jewelry.</p>
-      </div>
-      <div>
-        <h4>Products</h4>
-        <ul>
-          <li><a href="scan.html">Scan API</a></li>
-          <li><a href="intake.html">Intake</a></li>
-          <li><a href="verify.html">Verify</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Developers</h4>
-        <ul>
-          <li><a href="developers.html">API overview</a></li>
-          <li><a href="developers.html#sandbox">Sandbox</a></li>
-          <li><a href="openapi.json">OpenAPI spec</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Work with us</h4>
-        <ul>
-          <li><a href="pilot.html">Request a pilot</a></li>
-          <li><a href="index.html#data-rights">Data rights</a></li>
-        </ul>
-      </div>
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
     </div>
     <div class="footer-base">
-      <span>&copy; 2026 GemstoneAI. All rights reserved.</span>
-      <span>Valuations are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
     </div>
   </div>
 </footer>

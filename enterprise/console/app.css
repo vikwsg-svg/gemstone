@@ -1,4 +1,4 @@
-/* GemstoneAI Console: the same look as the enterprise website */
+/* GemstoneAI Console: the same typefaces and colors as the enterprise website */
 
 :root {
   --ink: #0f1a2b;
@@ -16,9 +16,9 @@
   --bad: #9a3412;
   --bad-bg: #fbe7dc;
   --radius: 10px;
-  --serif: "Newsreader", Georgia, serif;
+  --serif: "Schibsted Grotesk", "Inter", system-ui, sans-serif;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

@@ -2,178 +2,108 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Intake — GemstoneAI Enterprise</title>
-<meta name="description" content="Intake triages consigned jewelry and loose stones from photos and specs into list now, specialist review, lab or decline.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Intake | GemstoneAI Enterprise</title>
+<meta name="description" content="Intake routes consigned jewelry to list, review, lab or decline by your thresholds.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="nav">
-  <div class="container nav-inner">
-    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
-    <nav aria-label="Main">
-      <ul class="nav-links" id="nav-links">
-        <li><a href="scan.html">Scan API</a></li>
-        <li><a href="intake.html" aria-current="page">Intake</a></li>
-        <li><a href="verify.html">Verify</a></li>
-        <li><a href="developers.html">Developers</a></li>
-        <li><a class="btn btn-primary btn-small" href="pilot.html">Request a pilot</a></li>
-      </ul>
-    </nav>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html">Scan API</a></li>
+      <li><a href="intake.html" aria-current="page">Intake</a></li>
+      <li><a href="verify.html">Verify</a></li>
+      <li><a href="developers.html">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
   </div>
 </header>
 <main id="main">
-<section class="hero-product">
-  <div class="container">
-    <div class="meta"><span class="eyebrow"><span class="num">02</span>Intake</span><span class="pill pill-live">Pilot available</span></div>
-    <h1 style="margin:20px 0 22px">Route every jewelry consignment in seconds. Spend specialist hours where they change the outcome.</h1>
-    <p class="lede">Intake decides what happens to each consigned piece before a gemologist or jewelry specialist touches it, so expert time goes only where it moves the result.</p>
-    <div class="hero-actions">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <div class="hero-tag"><span class="pill">Pilot available</span><span class="label">Intake</span></div>
+      <h1>Route every consignment before a specialist touches it.</h1>
+      <p class="lede">Intake scans each consigned piece and applies your thresholds, so gemologist hours go only to the items where they change the outcome.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+        <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
+      </div>
+    </div>
+    <figure class="report" aria-label="Example Intake decision">
+  <div class="report-head"><b>Intake decision</b><span class="mono">CONS-20931 &middot; int_01M8CM08&hellip;</span></div>
+  <div class="report-body">
+    <div class="rrow"><span class="label">Route</span><div><div class="big">Lab</div><div class="sub">A lab report is suggested, and the open questions move the value between $1,800 and $5,200.</div></div></div>
+    <div class="rrow"><span class="label">Item</span><div>18k yellow gold pendant with a round diamond of about 1&nbsp;ct<div class="sub">78% confidence &middot; could be lab-grown (30%)</div></div></div>
+    <div class="rrow"><span class="label">Consignor</span><div>&ldquo;18k gold diamond pendant, inherited&rdquo;</div></div>
+    <div class="rrow"><span class="label">Your rules</span><div class="mono small">List &le; $2,000 &middot; Lab &ge; $5,000 &middot; Decline &lt; $50</div></div>
+    <div class="rrow"><span class="label">Final call</span><div class="muted">Waiting for a specialist</div></div>
+  </div>
+  <figcaption class="report-foot"><span>Sandbox example</span><span>Logged with the full scan</span></figcaption>
+</figure>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Four routes, set by you</h2>
+    </div>
+    <div class="routes">
+      <div class="route"><span class="chip c-list">List</span><span class="rule">&ge; 85% sure and &le; $2,000</span><p>Straight to listing, with suggested title and price range.</p></div>
+      <div class="route"><span class="chip c-review">Review</span><span class="rule">Everything else</span><p>A specialist looks, with the reasons attached so the review is fast.</p></div>
+      <div class="route"><span class="chip c-lab">Lab</span><span class="rule">&ge; $5,000, or a report settles it</span><p>When the value is high, or natural vs lab-grown or treatment moves the price.</p></div>
+      <div class="route"><span class="chip c-decline">Decline</span><span class="rule">&lt; $50</span><p>Below your floor.</p></div>
+    </div>
+    <p class="caption">Defaults shown. Change any threshold in the intake station or the API; every decision records the rules it used.</p>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Where your team works it</h2>
+    </div>
+    <div class="grid3"><div class="card"><h3>Intake station</h3><p>A web app for associates: photos from a phone or tablet, the consignor&rsquo;s words, the route, and the specialist&rsquo;s final decision.</p></div><div class="card"><h3>API and webhooks</h3><p>Route items from your consignment system and get told the moment each decision is ready.</p></div><div class="card"><h3>Spreadsheet batch</h3><p>For back-of-house queues: one row of photo links per item in, one decision per row out.</p></div></div>
+    <div class="api-strip"><span class="label">In the API</span><code>POST /intake/items</code><code>GET /intake/items</code><code>POST /intake/items/{id}/review</code><a href="developers.html">Endpoints and examples &rarr;</a></div>
+  </div>
+</section>
+<section class="cta">
+  <div class="wrap cta-inner">
+    <div>
+      <h2>Measure it on your own consignments</h2>
+      <p>The pilot tracks how often a specialist corrects a List decision, with a target under 2%, and the gemologist hours saved per 100 items.</p>
+    </div>
+    <div class="actions">
       <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
-      <a class="btn btn-secondary" href="scan.html">Built on the Scan API</a>
-    </div>
-  </div>
-</section>
-
-<section class="section-tight">
-  <div class="container">
-    <blockquote class="quote"><span class="eyebrow quote-label">Job to be done</span>&ldquo;Tell me which of today&rsquo;s 400 consignments can be listed now, which need a gemologist, and which need a lab.&rdquo;</blockquote>
-  </div>
-</section>
-
-<section class="section-alt">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">The routing decision</span>
-      <h2>Four outcomes, set by your thresholds.</h2>
-      <p>You set the rules, for example &ldquo;anything with an estimated value over $5,000 goes to Lab.&rdquo; Every decision is logged with its reasons.</p>
-    </div>
-    <div class="route-grid">
-      <div class="route"><b>List</b><p>Low value, high confidence. Goes straight to listing with prefilled fields.</p></div>
-      <div class="route"><b>Review</b><p>A gemologist should look. The reasons are attached so the review is fast.</p></div>
-      <div class="route"><b>Lab</b><p>Value is above your threshold, or a lab report would settle a question, such as natural vs lab-grown or treatment, that moves the price.</p></div>
-      <div class="route"><b>Decline</b><p>Below your platform&rsquo;s floor.</p></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="container split">
-    <div class="panel">
-      <span class="eyebrow">Inputs</span>
-      <h3>What your intake station already captures.</h3>
-      <ul class="list"><li>Multi-angle photos, including hallmarks and maker&rsquo;s marks</li><li>The consignor&rsquo;s description</li><li>Anything you already know: metal and weight, maker, era, a lab report number</li><li>Your consignment reference, echoed back on every result</li></ul>
-    </div>
-    <div class="panel">
-      <span class="eyebrow">Outputs per item</span>
-      <h3>A decision your associates can act on.</h3>
-      <ul class="list"><li><strong>Likely identification</strong> of metal and stones with alternatives and confidence, for example sapphire 82%, spinel 11%, glass 4%</li><li><strong>Value range</strong> from the Scan API</li><li><strong>Prefilled listing fields</strong> marked by confidence. Treatment, origin and maker attribution are suggested, never asserted as fact.</li><li><strong>The reasons and the rules used</strong>, logged with the full scan, so every decision can be explained later</li></ul>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">In the API</span>
-      <h2>One call per item: the scan, then your rules.</h2>
-    </div>
-    <div class="split">
-      <div>
-        <ul class="list"><li>Send the same photos as a scan, plus the consignor&rsquo;s description and your reference.</li><li>Get the decision with coded reasons, the rules that produced it, suggested listing fields and the full scan behind it.</li><li>Change your thresholds with <code>PUT /intake/rules</code>; every later decision records the rules it used.</li><li>Work the queue with <code>GET /intake/items</code>, record final decisions with <code>POST /intake/items/{id}/review</code>, and read the pilot metrics from <code>GET /intake/stats</code>.</li></ul>
-        <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/intake/items</span><span>request</span></div>
-<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/intake/items \
-  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
-  -d <span class="s">'{"photos": [{"url": "https://&hellip;/pendant-front.jpg"},
-                  {"url": "https://&hellip;/pendant-back.jpg"}],
-       "consignor_description": "18k gold diamond
-         pendant, inherited",
-       "reference": "CONS-20931"}'</span></pre>
-      </div>
-      <div>
-        <div class="code-label"><span>Response (abridged, sandbox example)</span><span>201</span></div>
-<pre class="code code-wrap">{
-  <span class="k">"object"</span>: <span class="s">"intake_item"</span>,
-  <span class="k">"id"</span>: <span class="s">"int_01M8CM08&hellip;"</span>,
-  <span class="k">"reference"</span>: <span class="s">"CONS-20931"</span>,
-  <span class="k">"routing"</span>: {
-    <span class="k">"decision"</span>: <span class="s">"lab"</span>,
-    <span class="k">"reasons"</span>: [{ <span class="k">"code"</span>: <span class="s">"lab_settles_value"</span>,
-      <span class="k">"message"</span>: <span class="s">"A lab report is suggested, and the open questions move the value between $1,800 and $5,200."</span> }],
-    <span class="k">"rules_applied"</span>: { <span class="k">"list_max_value"</span>: <span class="n">2000</span>, <span class="k">"lab_min_value"</span>: <span class="n">5000</span>, &hellip; },
-    <span class="k">"prefill"</span>: { <span class="k">"title"</span>: { <span class="k">"value"</span>: <span class="s">"18k yellow gold pendant with a round diamond of about 1 ct"</span>,
-                           <span class="k">"confidence"</span>: <span class="n">0.78</span> }, &hellip; }
-  },
-  <span class="k">"scan"</span>: { <span class="c">/* the full scan result */</span> }
-}</pre>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section-alt">
-  <div class="container split">
-    <div>
-      <span class="eyebrow">Delivery</span>
-      <h2 style="margin:14px 0 18px">At the intake station and in the back office.</h2>
-      <ul class="list"><li><strong>The intake station:</strong> a web app for associates. Take photos on a phone or tablet, add what the consignor said, get the routing, and record the specialist&rsquo;s final decision.</li><li><strong>An API</strong> for your consignment system, with <strong>webhooks</strong> when each decision is ready</li><li><strong>Batch mode</strong> for back-of-house queues: upload a spreadsheet of photo links, download one decision per row</li><li><strong>Your rules, your thresholds,</strong> changed in the app or the API at any time</li></ul>
-    </div>
-    <div><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Gemologist hours per 100 items, time from receipt to listing, and the share of List-routed items later corrected by an expert (target under 2%). Specialists record their final decision on each item, and the correction rate is calculated for you as the pilot runs.</p></div></div>
-  </div>
-</section>
-
-<section class="cta-band">
-  <div class="container cta-inner">
-    <div>
-      <h2>Bring Intake to your consignment floor.</h2>
-      <p>Intake is available for pilots. Tell us about your volumes and we&rsquo;ll scope one around your own consignments.</p>
-    </div>
-    <div class="cta-actions">
-      <a class="btn btn-light" href="pilot.html">Request a pilot</a>
-      <a class="btn btn-ghost-light" href="developers.html">Read the API docs</a>
+      <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
     </div>
   </div>
 </section>
 </main>
 <footer class="footer">
-  <div class="container">
-    <div class="footer-grid">
-      <div>
-        <a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
-        <p style="margin-top:14px;max-width:320px">The pricing and verification layer for jewelry.</p>
-      </div>
-      <div>
-        <h4>Products</h4>
-        <ul>
-          <li><a href="scan.html">Scan API</a></li>
-          <li><a href="intake.html">Intake</a></li>
-          <li><a href="verify.html">Verify</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Developers</h4>
-        <ul>
-          <li><a href="developers.html">API overview</a></li>
-          <li><a href="developers.html#sandbox">Sandbox</a></li>
-          <li><a href="openapi.json">OpenAPI spec</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Work with us</h4>
-        <ul>
-          <li><a href="pilot.html">Request a pilot</a></li>
-          <li><a href="index.html#data-rights">Data rights</a></li>
-        </ul>
-      </div>
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
     </div>
     <div class="footer-base">
-      <span>&copy; 2026 GemstoneAI. All rights reserved.</span>
-      <span>Valuations are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
     </div>
   </div>
 </footer>

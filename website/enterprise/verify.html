@@ -2,175 +2,130 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Verify — GemstoneAI Enterprise</title>
-<meta name="description" content="Verify scores how likely a jewelry listing, claim or appraisal is to be wrong, and says why: a risk signal for your trust and safety or claims team.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verify | GemstoneAI Enterprise</title>
+<meta name="description" content="Verify risk-scores jewelry listings, claims and appraisals whose price, identification or photos don't add up.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="nav">
-  <div class="container nav-inner">
-    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
-    <nav aria-label="Main">
-      <ul class="nav-links" id="nav-links">
-        <li><a href="scan.html">Scan API</a></li>
-        <li><a href="intake.html">Intake</a></li>
-        <li><a href="verify.html" aria-current="page">Verify</a></li>
-        <li><a href="developers.html">Developers</a></li>
-        <li><a class="btn btn-primary btn-small" href="pilot.html">Request a pilot</a></li>
-      </ul>
-    </nav>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="scan.html">Scan API</a></li>
+      <li><a href="intake.html">Intake</a></li>
+      <li><a href="verify.html" aria-current="page">Verify</a></li>
+      <li><a href="developers.html">Developers</a></li>
+      <li class="cta-item"><a class="btn btn-primary" href="pilot.html">Request a pilot</a></li>
+    </ul>
   </div>
 </header>
 <main id="main">
-<section class="hero-product">
-  <div class="container">
-    <div class="meta"><span class="eyebrow"><span class="num">04</span>Verify</span><span class="pill pill-live">Pilot available</span></div>
-    <h1 style="margin:20px 0 22px">Catch misdescribed jewelry before buyers do.</h1>
-    <p class="lede">Verify scores how likely a listing, claim or appraisal is to be wrong, and says why. It is a risk signal for a person or a rules engine, never a certificate of authenticity.</p>
-    <div class="hero-actions">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <div class="hero-tag"><span class="pill">Pilot available</span><span class="label">Verify</span></div>
+      <h1>Catch misdescribed jewelry before buyers do.</h1>
+      <p class="lede">Verify scans the item behind a listing, claim or appraisal and scores how likely it is to be wrong, with the evidence. A risk signal for your team, not an authentication.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
+        <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
+      </div>
+    </div>
+    <figure class="report" aria-label="Example Verify risk check">
+  <div class="report-head"><b>Risk check</b><span class="mono">Claim CLM-5512 &middot; ver_01M8&hellip;</span></div>
+  <div class="report-body">
+    <div class="rrow"><span class="label">Risk</span><div class="score"><span class="num">55</span><span class="of">/ 100</span><span class="chip c-review">Manual review</span></div></div>
+    <div class="rrow"><span class="label">Stated</span><div><div class="big">$14,500</div><div class="sub">Scan range $1,800 &ndash; $5,200 for an 18k gold pendant with a 1&nbsp;ct diamond</div></div></div>
+    <div class="rrow"><span class="label">Checks</span><div>
+      <ul class="checks">
+        <li class="fired"><span class="dot"></span><span>Stated value is 2.8&times; the scan&rsquo;s high end</span><span class="w">+40</span></li>
+        <li class="fired"><span class="dot"></span><span>Center stone could be lab-grown (30%)</span><span class="w">+15</span></li>
+        <li><span class="dot"></span><span>No reused photos in your account</span><span class="w">0</span></li>
+        <li><span class="dot"></span><span>Claimant has no earlier flags</span><span class="w">0</span></li>
+      </ul>
+    </div></div>
+  </div>
+  <figcaption class="report-foot"><span>Sandbox example</span><span>A risk signal, not an authentication</span></figcaption>
+</figure>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it checks</h2>
+    </div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Check</th><th>Fires when</th><th class="num">Points</th></tr></thead>
+      <tbody>
+        <tr><td>Price far below</td><td>The stated value is under half the scan&rsquo;s low end</td><td class="num">40</td></tr>
+        <tr><td>Price far above</td><td>The stated value is over 1.5&times; the scan&rsquo;s high end</td><td class="num">40</td></tr>
+        <tr><td>Reused photo</td><td>A photo was already used on another listing or claim in your account</td><td class="num">40</td></tr>
+        <tr><td>Identification doubt</td><td>Not identified, under 60% confidence, or a likely alternative such as lab-grown</td><td class="num">15&ndash;30</td></tr>
+        <tr><td>Seller pattern</td><td>The seller or claimant has two or more flagged checks in 90 days</td><td class="num">25</td></tr>
+      </tbody>
+    </table></div>
+    <p class="caption">Next: lab report numbers, hallmarks, and edited or cropped copies of a photo.</p>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>From score to action</h2>
+    </div>
+    <div class="scale">
+      <div class="s-allow"><span class="range">0&ndash;39</span><b>Allow</b><p>Or request a lab report when the identification is in doubt.</p></div>
+      <div class="s-review"><span class="range">40&ndash;69</span><b>Manual review</b><p>Goes to your review queue, highest risk first.</p></div>
+      <div class="s-hold"><span class="range">70&ndash;100</span><b>Hold</b><p>Stop the listing or the payment until someone looks.</p></div>
+    </div>
+    <p class="caption">Default thresholds. Set your own in the review queue or the API.</p>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Where your team works it</h2>
+    </div>
+    <div class="grid3"><div class="card"><h3>Real-time API and webhooks</h3><p>Check at listing or claim submission. Your queue hears about a flag the moment it fires.</p></div><div class="card"><h3>Review queue</h3><p>A web app for analysts: open flags by risk, each with its evidence, marked confirmed or cleared.</p></div><div class="card"><h3>Spreadsheet batch</h3><p>Screen live inventory or a claims backlog: one row per item in, one result per row out.</p></div></div>
+    <div class="api-strip"><span class="label">In the API</span><code>POST /verify/checks</code><code>GET /verify/checks</code><code>POST /verify/checks/{id}/review</code><a href="developers.html">Endpoints and examples &rarr;</a></div>
+  </div>
+</section>
+<section class="cta">
+  <div class="wrap cta-inner">
+    <div>
+      <h2>Measure it on your own listings or claims</h2>
+      <p>The pilot tracks the precision of the top 5% of flags, from your team&rsquo;s verdicts, and the value of the problems caught.</p>
+    </div>
+    <div class="actions">
       <a class="btn btn-primary" href="pilot.html">Request a pilot</a>
-      <a class="btn btn-secondary" href="scan.html">Built on the Scan API</a>
-    </div>
-  </div>
-</section>
-
-<section class="section-tight">
-  <div class="container">
-    <blockquote class="quote"><span class="eyebrow quote-label">Job to be done</span>&ldquo;Flag the jewelry listings and claims my team should look at today, ranked by risk.&rdquo;</blockquote>
-  </div>
-</section>
-
-<section class="section-alt">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">Checks</span>
-      <h2>Four ways a listing or claim stops adding up.</h2>
-      <p>Each check reports whether it ran, whether it fired, its weight and its evidence. Weights and thresholds are yours to set.</p>
-    </div>
-    <div class="split-3">
-      <div class="panel"><h3>Price anomaly</h3><p style="color:var(--ink-2)">The asking price or claimed value is far outside the Scan API&rsquo;s price range for the stated metal, stones and maker. Too cheap usually means misdescribed; too high means inflation.</p></div>
-      <div class="panel"><h3>Identification doubt</h3><p style="color:var(--ink-2)">The scan can&rsquo;t identify the piece, isn&rsquo;t confident, or sees a likely alternative, such as a lab-grown or simulant stone.</p></div>
-      <div class="panel"><h3>Duplicate imagery</h3><p style="color:var(--ink-2)">The same photo was already used in your account on another listing or claim.</p></div>
-      <div class="panel"><h3>Seller pattern</h3><p style="color:var(--ink-2)">The same seller or claimant keeps getting flagged.</p></div>
-      <div class="panel"><h3>On the roadmap</h3><p style="color:var(--ink-2)">Document checks (lab report numbers, hallmarks), field-by-field attribute conflicts, and edited or cropped copies of a photo.</p></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="container split">
-    <div>
-      <span class="eyebrow">Outputs</span>
-      <h2 style="margin:14px 0 18px">A ranked queue, with the evidence.</h2>
-      <ul class="list"><li><strong>Risk score</strong> from 0 to 100</li><li><strong>The checks that fired,</strong> with their evidence</li><li><strong>A suggested action:</strong> allow, request lab report, manual review or hold</li><li><strong>A review queue</strong> of open flags, highest risk first, where your team marks each one confirmed or cleared</li></ul>
-    </div>
-    <div>
-      <span class="eyebrow">Delivery</span>
-      <h2 style="margin:14px 0 18px">Where your team already works.</h2>
-      <ul class="list"><li><strong>A real-time API</strong> at listing or claim submission</li><li><strong>Webhooks</strong> into your trust and safety or claims queue the moment a check is flagged</li><li><strong>Batch</strong> over live inventory or a claims backlog: upload a spreadsheet, download one result per row</li><li><strong>A review queue web app</strong> for analysts who don&rsquo;t live in your own tools</li></ul>
-    </div>
-  </div>
-</section>
-
-<section class="section-alt">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">In the API</span>
-      <h2>Check a listing or claim as it&rsquo;s submitted.</h2>
-    </div>
-    <div class="split">
-      <div>
-        <ul class="list"><li>Send the photos and what the listing or claim states: its id, the seller or claimant, the stated value.</li><li>Get a 0&ndash;100 risk score, a suggested action (allow, request lab report, manual review or hold) and every check with its evidence.</li><li>Set your thresholds with <code>PUT /verify/settings</code>. Duplicate photos and seller history are matched only within your own account.</li><li>Pull the open flags with <code>GET /verify/checks</code>, record verdicts with <code>POST /verify/checks/{id}/review</code>, and read flag precision from <code>GET /verify/stats</code>.</li></ul>
-        <div class="code-label" style="margin-top:22px"><span>POST /enterprise/v1/verify/checks</span><span>request</span></div>
-<pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/verify/checks \
-  -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
-  -d <span class="s">'{"photos": [{"url": "https://&hellip;/claim-photo-1.jpg"}],
-       "subject": {"type": "claim",
-         "external_id": "CLM-5512",
-         "seller_id": "policyholder-8812",
-         "stated_value": 14500}}'</span></pre>
-      </div>
-      <div>
-        <div class="code-label"><span>Response (abridged, sandbox example)</span><span>201</span></div>
-<pre class="code code-wrap">{
-  <span class="k">"object"</span>: <span class="s">"verify_check"</span>,
-  <span class="k">"reference"</span>: <span class="s">"CLM-5512"</span>,
-  <span class="k">"risk"</span>: {
-    <span class="k">"risk_score"</span>: <span class="n">55</span>,
-    <span class="k">"action"</span>: <span class="s">"manual_review"</span>,
-    <span class="k">"checks"</span>: [
-      { <span class="k">"code"</span>: <span class="s">"price_too_high"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">40</span>,
-        <span class="k">"message"</span>: <span class="s">"The stated $14,500 is far above the scan's range of $1,800&ndash;$5,200; this can mean inflation."</span> },
-      { <span class="k">"code"</span>: <span class="s">"possible_other_identity"</span>, <span class="k">"fired"</span>: <span class="n">true</span>, <span class="k">"weight"</span>: <span class="n">15</span>,
-        <span class="k">"message"</span>: <span class="s">"It could be something else: Center stone is a lab-grown diamond (30%)"</span> },
-      <span class="c">/* every other check, with whether it ran */</span>
-    ],
-    <span class="k">"note"</span>: <span class="s">"A risk signal for review, not an authentication or certification."</span>
-  },
-  <span class="k">"scan"</span>: { <span class="c">/* the full scan result */</span> }
-}</pre>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section-tight">
-  <div class="container"><div class="metric"><span class="eyebrow">Pilot success metric</span><p>Precision of the top 5% of flags (the share confirmed as real problems on review) and the dollar value of the problems caught. Both are calculated from your team&rsquo;s verdicts as the pilot runs.</p></div></div>
-</section>
-
-<section class="cta-band">
-  <div class="container cta-inner">
-    <div>
-      <h2>Run Verify over last month&rsquo;s listings.</h2>
-      <p>Verify is in early access. A pilot starts with a batch over your recent inventory or claims, scored and reviewed with your team.</p>
-    </div>
-    <div class="cta-actions">
-      <a class="btn btn-light" href="pilot.html">Request a pilot</a>
-      <a class="btn btn-ghost-light" href="developers.html">Read the API docs</a>
+      <a class="btn btn-quiet" href="developers.html">Read the API docs</a>
     </div>
   </div>
 </section>
 </main>
 <footer class="footer">
-  <div class="container">
-    <div class="footer-grid">
-      <div>
-        <a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="#1c3f94" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="#1c3f94" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
-        <p style="margin-top:14px;max-width:320px">The pricing and verification layer for jewelry.</p>
-      </div>
-      <div>
-        <h4>Products</h4>
-        <ul>
-          <li><a href="scan.html">Scan API</a></li>
-          <li><a href="intake.html">Intake</a></li>
-          <li><a href="verify.html">Verify</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Developers</h4>
-        <ul>
-          <li><a href="developers.html">API overview</a></li>
-          <li><a href="developers.html#sandbox">Sandbox</a></li>
-          <li><a href="openapi.json">OpenAPI spec</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Work with us</h4>
-        <ul>
-          <li><a href="pilot.html">Request a pilot</a></li>
-          <li><a href="index.html#data-rights">Data rights</a></li>
-        </ul>
-      </div>
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="index.html" aria-label="GemstoneAI Enterprise home"><svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8.5 4.5h15l6 7.5L16 28.5 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.5 12h27M12.5 4.5 10.5 12 16 28.5 21.5 12l-2-7.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="brand-name">GemstoneAI</span><span class="brand-sub">Enterprise</span></a>
+      <ul class="footer-links">
+        <li><a href="scan.html">Scan API</a></li>
+        <li><a href="intake.html">Intake</a></li>
+        <li><a href="verify.html">Verify</a></li>
+        <li><a href="developers.html">Developers</a></li>
+        <li><a href="developers.html#sandbox">Sandbox</a></li>
+        <li><a href="openapi.json">OpenAPI spec</a></li>
+        <li><a href="index.html#data-rights">Data rights</a></li>
+        <li><a href="pilot.html">Request a pilot</a></li>
+      </ul>
     </div>
     <div class="footer-base">
-      <span>&copy; 2026 GemstoneAI. All rights reserved.</span>
-      <span>Valuations are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
+      <span>&copy; 2026 GemstoneAI</span>
+      <span>Prices are estimates from comparable sales and listings. They are not appraisals or authentication.</span>
     </div>
   </div>
 </footer>

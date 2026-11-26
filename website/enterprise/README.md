@@ -38,7 +38,11 @@ These pages follow that: they link only to each other.
       certifications (such as SOC 2) or prices. Add them only once confirmed: for example, Jewelers
       Mutual as a named reference, or a measured accuracy number for the Scan API.
 
-The API examples on the Intake and Verify pages are sandbox output. The pages describe the console
+Each product page opens with an example of the product's output (a scan result, an intake decision,
+a risk check), taken from the API's sandbox and labelled as such. Light and dark themes follow the
+visitor's system setting.
+
+The API examples on the developers page are sandbox output. The pages describe the console
 (served by the API at `/enterprise/v1/console/`), batch and webhooks, which are built; anything not
 built is labelled "on the roadmap".
 
