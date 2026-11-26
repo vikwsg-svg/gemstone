@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Developers — GemstoneAI Enterprise</title>
-<meta name="description" content="The GemstoneAI Enterprise API: authentication, sandbox, endpoints, idempotency and model version pinning.">
+<meta name="description" content="The GemstoneAI Enterprise API: authentication, sandbox, endpoints, idempotency and versioning.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
@@ -50,12 +50,11 @@
       <p>Base URL <code style="font-family:var(--mono);font-size:0.9em">https://api.gemstoneaiapp.com/enterprise/v1</code></p>
     </div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Endpoint</th><th>What it does</th></tr></thead><tbody>
-<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans</code></td><td>Scan one piece or loose stone from photos and/or details: identification, price range, breakdown, comparables, confidence, scenarios</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans</code></td><td>Scan one piece or loose stone from photos: identification, price and comparables in one result</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/{scan_id}</code></td><td>Retrieve a scan as it was returned, or the result of one still processing</td></tr>
-<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans/batch</code></td><td>Upload a CSV of items (photo links and/or details); starts an asynchronous job</td></tr>
+<tr><td class="nowrap"><span class="method method-post">POST</span><code>/scans/batch</code></td><td>Upload a CSV of items (photo links plus optional details); starts an asynchronous job</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/batch/{job_id}</code></td><td>Batch job status and counts</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/scans/batch/{job_id}/results</code></td><td>Download the results CSV</td></tr>
-<tr><td class="nowrap"><span class="method method-get">GET</span><code>/models</code></td><td>Model versions available for pinning</td></tr>
 <tr><td class="nowrap"><span class="method method-get">GET</span><code>/usage</code></td><td>Valuations per day for your account</td></tr>
     </tbody></table></div>
   </div>
@@ -66,12 +65,12 @@
     <div>
       <span class="eyebrow">Authentication and sandbox</span>
       <h2 style="margin:14px 0 18px">Two kinds of keys.</h2>
-      <ul class="list"><li><strong><code>gsk_test_</code> keys</strong> run against simulated identification and synthetic comparables. Every response says <code>synthetic_data: true</code>.</li><li><strong><code>gsk_live_</code> keys</strong> run against the production engine.</li><li>Send keys as <code>Authorization: Bearer &lt;key&gt;</code>. Keys are scoped per product.</li><li>Errors always have the same shape: <code>{{&quot;error&quot;: {{&quot;code&quot;, &quot;message&quot;}}}}</code>.</li></ul>
+      <ul class="list"><li><strong><code>gsk_test_</code> keys</strong> return example scan results. Every response says <code>synthetic_data: true</code>.</li><li><strong><code>gsk_live_</code> keys</strong> run against the production engine.</li><li>Send keys as <code>Authorization: Bearer &lt;key&gt;</code>. Keys are scoped per product.</li><li>Errors always have the same shape: <code>{{&quot;error&quot;: {{&quot;code&quot;, &quot;message&quot;}}}}</code>.</li></ul>
     </div>
     <div>
       <span class="eyebrow">Safe by design</span>
       <h2 style="margin:14px 0 18px">Retries, versions and floors.</h2>
-      <ul class="list"><li><strong>Idempotency keys</strong> on every POST: a retried request returns the original result and is billed once.</li><li><strong>Model version pinning</strong> per request or per account; every response is stamped.</li><li><strong>No guessing:</strong> <code>unidentified</code> or <code>insufficient_data</code>, with <code>price: null</code>, when the item can&rsquo;t be identified well enough or fewer than five comparables qualify.</li><li><strong>Long identifications</strong> return <code>202</code> with <code>status: processing</code>; retrieve the scan to get the result.</li><li><strong>Realized vs asking</strong> on every comparable, via <code>source_type</code>.</li></ul>
+      <ul class="list"><li><strong>Idempotency keys</strong> on every POST: a retried request returns the original result and is billed once.</li><li><strong>Versioned results:</strong> every response is stamped with the scan model; pin one per request or per account.</li><li><strong>No guessing:</strong> the price is <code>withheld</code>, with the reason, when the item can&rsquo;t be identified or fewer than five comparables are found.</li><li><strong>Long scans</strong> return <code>202</code> with <code>status: processing</code>; retrieve the scan to get the result.</li><li><strong>Sale or asking price</strong> on every comparable, via <code>price_type</code>.</li></ul>
     </div>
   </div>
 </section>
@@ -79,30 +78,29 @@
 <section>
   <div class="container split">
     <div>
-      <div class="code-label"><span>Scan from details</span><span>request</span></div>
+      <div class="code-label"><span>Scan with known details</span><span>request</span></div>
 <pre class="code"><span class="k">curl</span> https://api.gemstoneaiapp.com/enterprise/v1/scans \
   -H <span class="s">"Authorization: Bearer gsk_test_&hellip;"</span> \
   -H <span class="s">"Idempotency-Key: lot-1142"</span> \
-  -d <span class="s">'{"item_type": "bracelet",
-       "metal": {"type": "gold", "purity": "18k",
-                 "weight_grams": 25},
-       "brand": "&hellip;", "signed": true,
-       "era": "art deco", "condition": "very good",
-       "valuation_basis": "auction_realized"}'</span></pre>
+  -d <span class="s">'{"photos": [{"url": "https://&hellip;/lot-1142.jpg"}],
+       "details": {"item_type": "bracelet",
+         "metal": {"type": "gold", "purity": "18k",
+                   "weight_grams": 25},
+         "era": "art deco"},
+       "client_reference": "LOT-1142"}'</span></pre>
     </div>
     <div>
       <div class="code-label"><span>Response (abridged)</span><span>201</span></div>
 <pre class="code">{
   <span class="k">"scan_id"</span>: <span class="s">"scn_01M87F&hellip;"</span>,
-  <span class="k">"status"</span>: <span class="s">"priced"</span>,
+  <span class="k">"status"</span>: <span class="s">"completed"</span>,
+  <span class="k">"model_version"</span>: <span class="s">"&hellip;"</span>,
   <span class="k">"identification"</span>: { <span class="k">"summary"</span>: <span class="s">"&hellip;"</span>, <span class="k">"confidence"</span>: <span class="n">&hellip;</span>,
                       <span class="k">"alternatives"</span>: [ &hellip; ], <span class="k">"next_evidence"</span>: [ &hellip; ] },
-  <span class="k">"model_version"</span>: <span class="s">"scan-2026.11.0"</span>,
-  <span class="k">"price"</span>: { <span class="k">"total"</span>: { <span class="k">"low"</span>: <span class="n">&hellip;</span>, <span class="k">"mid"</span>: <span class="n">&hellip;</span>, <span class="k">"high"</span>: <span class="n">&hellip;</span> } },
-  <span class="k">"breakdown"</span>: { <span class="k">"raw"</span>: &hellip;, <span class="k">"make"</span>: &hellip;, <span class="k">"market"</span>: &hellip; },
-  <span class="k">"confidence"</span>: { <span class="k">"score"</span>: <span class="n">&hellip;</span>, <span class="k">"reasons"</span>: [ &hellip; ] },
-  <span class="k">"comps"</span>: [ { <span class="k">"source_type"</span>: <span class="s">"realized"</span>, <span class="k">"similarity"</span>: <span class="n">&hellip;</span> } ],
-  <span class="k">"scenarios"</span>: [ &hellip; ]
+  <span class="k">"price_context"</span>: { <span class="k">"status"</span>: <span class="s">"provided"</span>, <span class="k">"low"</span>: <span class="n">&hellip;</span>, <span class="k">"high"</span>: <span class="n">&hellip;</span>,
+                     <span class="k">"basis"</span>: <span class="s">"&hellip;"</span> },
+  <span class="k">"comparables"</span>: { <span class="k">"total"</span>: <span class="n">&hellip;</span>, <span class="k">"items"</span>: [
+    { <span class="k">"price"</span>: <span class="n">&hellip;</span>, <span class="k">"price_type"</span>: <span class="s">"realized"</span>, <span class="k">"differences"</span>: [ &hellip; ] } ] }
 }</pre>
     </div>
   </div>
@@ -113,7 +111,7 @@
     <div class="section-head">
       <span class="eyebrow">Batch</span>
       <h2>Revalue a whole portfolio from a spreadsheet.</h2>
-      <p>Upload a CSV with one piece or stone per row (photo links and anything you already know: item type, metal, stones, maker, era, condition), poll the job, and download one result row per item with its identification, price range, breakdown, confidence and scan ID. A whole batch is pinned to one model version.</p>
+      <p>Upload a CSV with one piece or stone per row (photo links, plus anything you already know), poll the job, and download one result row per item with its identification, price, comparable counts and scan ID.</p>
     </div>
   </div>
 </section>

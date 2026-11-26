@@ -168,6 +168,9 @@ section { padding: 88px 0; }
 .ident-alts > span:first-child, .ident-open > span:first-child { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 4px; }
 .alt-chip { font-family: var(--mono); font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .band { margin-bottom: 20px; }
+.price-range { font-family: var(--serif); font-size: 1.7rem; font-weight: 600; color: var(--ink); white-space: nowrap; line-height: 1.2; }
+.price-range span { font-family: var(--sans); font-size: 0.9rem; font-weight: 400; color: var(--ink-3); margin: 0 4px; }
+.band .band-sub { text-align: left; }
 .band-values { display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; }
 .band-values div { font-family: var(--mono); font-size: 0.82rem; color: var(--ink-3); }
 .band-values div:nth-child(2) { text-align: center; color: var(--ink); font-size: 1.55rem; font-weight: 600; font-family: var(--serif); }

@@ -40,7 +40,7 @@ These pages follow that: they link only to each other.
       Mutual as a named reference, or a measured accuracy number for the Scan API.
 
 The sample scan card on the overview and Scan API pages (a platinum sapphire and diamond ring) uses
-real output from the API's sandbox, which simulates identification and holds synthetic items. It is labeled as such; keep that label.
+an example result from the API's sandbox, not a real scan. It is labeled as such; keep that label.
 
 `openapi.json` must match `docs/enterprise/openapi.json`; a test fails if they drift. After API
 changes, run `python -m enterprise.cli export-openapi` and copy the file here.
