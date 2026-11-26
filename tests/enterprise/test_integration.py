@@ -13,14 +13,16 @@ from pathlib import Path
 
 import pytest
 from alembic import command
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
+from alembic.migration import MigrationContext
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select, text
 
 from enterprise.app import create_app, create_enterprise_app, export_openapi
 from enterprise.cli import cli
-from enterprise.db import Database
+from enterprise.db import Base, Database
 from enterprise.models import Scan
 from enterprise.settings import EnterpriseSettings, get_settings
 from tests.enterprise.helpers import BASE, Clock
@@ -117,6 +119,22 @@ def test_full_scan_round_trip(migrated_url):
         assert row.result == body
         assert row.engine == "sandbox"
         s.execute(text("SELECT 1"))
+    db.engine.dispose()
+
+
+def test_migrations_match_the_models(migrated_url):
+    """Alembic head must create exactly what the ORM models describe."""
+    db = Database(migrated_url)
+    with db.engine.connect() as conn:
+        context = MigrationContext.configure(conn, opts={
+            "compare_type": True,
+            "include_object": lambda obj, name, type_, reflected, compare_to:
+                type_ != "table" or (name.startswith("ent_") and name != "ent_alembic_version"),
+        })
+        assert compare_metadata(context, Base.metadata) == []
+        tables = set(inspect(conn).get_table_names())
+    assert {"ent_product_records", "ent_product_settings", "ent_photo_fingerprints",
+            "ent_index_snapshots", "ent_index_corrections"} <= tables
     db.engine.dispose()
 
 

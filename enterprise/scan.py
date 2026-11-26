@@ -152,7 +152,8 @@ class ScanService:
         row.model_version = body["model_version"]
         row.priced = body["price_context"]["status"] == "provided"
         row.completed_at = self.state.clock()
-        record_scan(self.session, tenant_id=row.tenant_id, product=PRODUCT,
+        # Counted under the product the customer called (scan, intake, estimate or verify).
+        record_scan(self.session, tenant_id=row.tenant_id, product=row.product,
                     day=row.completed_at.date(), priced=row.priced)
 
     def create(
@@ -163,8 +164,12 @@ class ScanService:
         batch_job_id: Optional[str] = None,
         batch_row: Optional[int] = None,
         wait_seconds: Optional[float] = None,
+        product: str = PRODUCT,
     ) -> dict:
-        """Run (or start) one scan. Stages rows on the session; the caller commits."""
+        """Run (or start) one scan. Stages rows on the session; the caller commits.
+
+        ``product`` is the product the customer called; the scan is metered under it.
+        """
         tenant = principal.tenant
         engine = self.engine_for(tenant)
         photos = request.photo_refs()
@@ -194,7 +199,7 @@ class ScanService:
         }
         row = Scan(
             id=base["scan_id"], tenant_id=tenant.id, api_key_id=principal.api_key.id,
-            product=PRODUCT, status="processing", engine=engine.name, photo_count=len(photos),
+            product=product, status="processing", engine=engine.name, photo_count=len(photos),
             request_payload=base["inputs"], result={}, batch_job_id=batch_job_id,
             batch_row=batch_row, created_at=now,
         )
