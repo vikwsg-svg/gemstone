@@ -27,6 +27,9 @@ gemstone = "scripts.cli:main"
 where = ["."]
 include = ["crawler*", "scrapers*", "validators*", "dedupe*", "storage*", "orchestrator*", "scripts*", "config*", "enterprise*"]
 
+[tool.setuptools.package-data]
+enterprise = ["alembic.ini", "console/*.html", "console/*.js", "console/*.css"]
+
 [tool.black]
 line-length = 100
 target-version = ['py311']

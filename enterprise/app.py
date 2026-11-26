@@ -29,6 +29,7 @@ from enterprise.engine.sandbox import SandboxScanEngine
 from enterprise.errors import install_error_handlers
 from enterprise.models import utcnow
 from enterprise.routes import router
+from enterprise.routes_console import router as console_router
 from enterprise.routes_products import router as products_router
 from enterprise.routes_webhooks import router as webhooks_router
 from enterprise.settings import EnterpriseSettings, get_settings
@@ -112,6 +113,7 @@ def create_enterprise_app(
     app.include_router(router)
     app.include_router(products_router)
     app.include_router(webhooks_router)
+    app.include_router(console_router)
     return app
 
 
